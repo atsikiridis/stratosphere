@@ -15,9 +15,13 @@ package eu.stratosphere.hadoopcompatibility.mapred.utils;
 
 import java.util.Map;
 
+import eu.stratosphere.hadoopcompatibility.mapred.wrapper.HadoopDummyReporter;
+import eu.stratosphere.hadoopcompatibility.mapred.wrapper.HadoopOutputCollector;
 import org.apache.hadoop.mapred.JobConf;
 
 import eu.stratosphere.runtime.fs.hdfs.DistributedFileSystem;
+import org.apache.hadoop.mapred.OutputCollector;
+import org.apache.hadoop.mapred.Reporter;
 
 /**
  * Merge HadoopConfiguration into JobConf. This is necessary for the HDFS configuration.
@@ -28,5 +32,28 @@ public class HadoopConfiguration {
 		for (Map.Entry<String, String> e : hadoopConf) {
 			jobConf.set(e.getKey(), e.getValue());
 		}
+	}
+
+	public static void setOutputCollectorToConf(Class<? extends HadoopOutputCollector> outputClass, JobConf jobConf) {
+		jobConf.getClass("stratosphere.collector", outputClass, HadoopOutputCollector.class );
+	}
+
+	/**
+	 * Setters and getters for objects that follow Hadoop's serialization.
+	 * Generally, these should be called by the writeObject and readObject methods of the object
+	 * they are contained as fields. For an example, see the HadoopMapFunction.
+	 */
+	@SuppressWarnings("unchecked")
+	public static Class<? extends HadoopOutputCollector> getOutputCollectorFromConf(JobConf jobConf) {
+		return  (Class<? extends HadoopOutputCollector>) jobConf.getClass("stratosphere.collector",
+				HadoopOutputCollector.class, OutputCollector.class);
+	}
+
+	public static void setReporterToConf(Class<? extends Reporter> reporterClass, JobConf jobConf) {
+		jobConf.getClass("stratosphere.reporter", reporterClass, Reporter.class );
+	}
+
+	public static Class<? extends Reporter> getReporterFromConf(JobConf jobConf) {
+		return  jobConf.getClass("stratosphere.collector", HadoopDummyReporter.class, Reporter.class );
 	}
 }

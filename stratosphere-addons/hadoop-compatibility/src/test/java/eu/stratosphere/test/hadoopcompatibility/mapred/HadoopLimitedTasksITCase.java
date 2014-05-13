@@ -12,11 +12,14 @@
  **********************************************************************************************************************/
 package eu.stratosphere.test.hadoopcompatibility.mapred;
 
-import eu.stratosphere.hadoopcompatibility.mapred.example.WordCount;
+import eu.stratosphere.hadoopcompatibility.mapred.example.Identity;
 import eu.stratosphere.test.testdata.WordCountData;
 import eu.stratosphere.test.util.JavaProgramTestBase;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.util.List;
 
-public class HadoopInputOutputITCase extends JavaProgramTestBase {
+public class HadoopLimitedTasksITCase extends JavaProgramTestBase {
 	
 	protected String textPath;
 	protected String resultPath;
@@ -27,14 +30,28 @@ public class HadoopInputOutputITCase extends JavaProgramTestBase {
 		textPath = createTempFile("text.txt", WordCountData.TEXT);
 		resultPath = getTempDirPath("result");
 	}
-	
+
 	@Override
 	protected void postSubmit() throws Exception {
-		compareResultsByLinesInMemory(WordCountData.COUNTS, resultPath + "/1");
+		compareResultsByLinesInMemory(WordCountData.TEXT, resultPath + "/1");
+	}
+
+	@Override
+	/**
+	 * Since this is a test where the key doesn't really make sense we omit it and keep the value to compare with.
+	 */
+	public void readAllResultLines(List<String> target, String resultPath, boolean inOrderOfFiles) throws IOException {
+		for (BufferedReader reader : getResultReader(resultPath, inOrderOfFiles)) {
+			String s;
+			while ((s = reader.readLine()) != null) {
+				String[] splits = s.split("\\s", 2);
+				target.add(splits[1]);
+			}
+		}
 	}
 	
 	@Override
 	protected void testProgram() throws Exception {
-		WordCount.main(new String[]{textPath, resultPath});
+		Identity.main(new String[]{textPath, resultPath});
 	}
 }
