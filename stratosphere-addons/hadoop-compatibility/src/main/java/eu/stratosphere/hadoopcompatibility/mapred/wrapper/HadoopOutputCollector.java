@@ -36,12 +36,12 @@ public class HadoopOutputCollector<OUT extends Tuple2>
 	@Override
 	public void collect(Object o, Object o2) throws IOException {
 		final OUT tuple = (OUT) new Tuple2(o,o2);
-		try {
+		if (this.collector == null) {
 			this.collector.collect(tuple);
 		}
-		catch (NullPointerException e) {
+		else {
 			throw new RuntimeException("There is no Stratosphere Collector set to be wrapped by this" +
-					" HadoopOutputCollector object. The set method should be called in advance.", e);
+					" HadoopOutputCollector object. The set method must be called in advance.");
 		}
 	}
 }
