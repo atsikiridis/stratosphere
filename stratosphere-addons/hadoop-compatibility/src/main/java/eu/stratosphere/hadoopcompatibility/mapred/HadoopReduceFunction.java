@@ -41,8 +41,8 @@ import java.util.Iterator;
 erasure issues are fixed.*/
 
 @Combinable //TODO Probably not all the times.
-public class HadoopReduceFunction<IN extends Tuple2<? extends WritableComparable, ? extends Writable>, OUT extends Tuple2<? extends WritableComparable, ? extends Writable>>
-		extends GroupReduceFunction<IN, OUT>
+public class HadoopReduceFunction<KEYIN extends WritableComparable, VALUEIN extends Writable, KEYOUT extends WritableComparable, VALUEOUT extends Writable>
+		extends GroupReduceFunction<Tuple2<KEYIN,VALUEIN>, Tuple2<KEYOUT,VALUEOUT>>
 		implements Serializable {
 
 	private static final long serialVersionUID = 1L;
@@ -50,16 +50,16 @@ public class HadoopReduceFunction<IN extends Tuple2<? extends WritableComparable
 	private JobConf jobConf;
 	private Reducer reducer;
 	private String reducerName;
-	private HadoopOutputCollector<OUT> outputCollector;
+	private HadoopOutputCollector<KEYOUT,VALUEOUT> outputCollector;
 	private Reporter reporter;
 	private ReducerTransformingIterator iterator;
 
 	@SuppressWarnings("unchecked")
 	public HadoopReduceFunction(JobConf jobConf) {
-		this(jobConf, new HadoopOutputCollector<OUT>(), new HadoopDummyReporter());
+		this(jobConf, new HadoopOutputCollector<KEYOUT,VALUEOUT>(), new HadoopDummyReporter());
 	}
 
-	public HadoopReduceFunction(JobConf jobConf, HadoopOutputCollector<OUT> outputCollector, Reporter reporter) {
+	public HadoopReduceFunction(JobConf jobConf, HadoopOutputCollector<KEYOUT,VALUEOUT> outputCollector, Reporter reporter) {
 		this.jobConf = jobConf;
 		this.reducer = InstantiationUtil.instantiate(jobConf.getReducerClass());
 		this.reducerName = reducer.getClass().getName();
@@ -121,7 +121,7 @@ public class HadoopReduceFunction<IN extends Tuple2<? extends WritableComparable
 
 	@SuppressWarnings("unchecked")
 	@Override
-	public void reduce(Iterator<IN> values, Collector<OUT> out) throws Exception {
+	public void reduce(Iterator<Tuple2<KEYIN,VALUEIN>> values, Collector<Tuple2<KEYOUT,VALUEOUT>> out) throws Exception {
 		outputCollector.set(out);
 		iterator.set(values);
 		this.reducer.reduce(iterator.getKey() , iterator, outputCollector, reporter);

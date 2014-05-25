@@ -18,7 +18,6 @@ import eu.stratosphere.hadoopcompatibility.mapred.HadoopMapFunction;
 import eu.stratosphere.hadoopcompatibility.mapred.HadoopReduceFunction;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.LongWritable;
-import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.TextInputFormat;
@@ -67,7 +66,7 @@ public class Identity {
 		hadoopJobConf.setMapperClass(IdentityMapper.class);
 		// Use the information from hadoop's configuration to instantiate a stratosphere map function.
 		FlatMapFunction<Tuple2<LongWritable, Text>, Tuple2<LongWritable, Text>> mapWrapper =
-				(FlatMapFunction) new HadoopMapFunction<Tuple2<LongWritable,Text>, Tuple2<LongWritable, Text>>(hadoopJobConf);
+				(FlatMapFunction) new HadoopMapFunction<LongWritable,Text, LongWritable, Text>(hadoopJobConf){};
 		DataSet<Tuple2<LongWritable, Text>> words = text.flatMap(mapWrapper);
 
 
@@ -75,7 +74,7 @@ public class Identity {
 		hadoopJobConf.setReducerClass(IdentityReducer.class);
 		hadoopJobConf.setCombinerClass(IdentityReducer.class);  // The same reducer implementation as a local combiner.
 		GroupReduceFunction<Tuple2<LongWritable, Text>, Tuple2<LongWritable, Text>> reduceWrapper =
-				new HadoopReduceFunction<Tuple2<LongWritable, Text>, Tuple2<LongWritable, Text>>(hadoopJobConf);
+				new HadoopReduceFunction<LongWritable, Text, LongWritable, Text>(hadoopJobConf){};
 		DataSet<Tuple2<LongWritable, Text>> result = words.reduceGroup(reduceWrapper);
 
 

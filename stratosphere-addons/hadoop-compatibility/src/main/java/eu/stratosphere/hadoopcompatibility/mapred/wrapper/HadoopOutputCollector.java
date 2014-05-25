@@ -15,6 +15,8 @@ package eu.stratosphere.hadoopcompatibility.mapred.wrapper;
 
 import eu.stratosphere.api.java.tuple.Tuple2;
 import eu.stratosphere.util.Collector;
+import org.apache.hadoop.io.Writable;
+import org.apache.hadoop.io.WritableComparable;
 import org.apache.hadoop.mapred.OutputCollector;
 
 import java.io.IOException;
@@ -23,19 +25,19 @@ import java.io.IOException;
  * A Hadoop OutputCollector that basically wraps a Stratosphere OutputCollector.
  * This implies that on each call of collect() the data is actually collected by Stratosphere.
  */
-public class HadoopOutputCollector<OUT extends Tuple2>
-		implements OutputCollector {
+public class HadoopOutputCollector<KEYOUT extends WritableComparable, VALUEOUT extends Writable>
+		implements OutputCollector<KEYOUT,VALUEOUT> {
 
-	private Collector<OUT> collector;
+	private Collector<Tuple2<KEYOUT,VALUEOUT>> collector;
 
-	public void set(Collector<OUT> collector) {
+	public void set(Collector<Tuple2<KEYOUT,VALUEOUT>> collector) {
 		this.collector = collector;
 	}
 
 	@SuppressWarnings("unchecked")
 	@Override
-	public void collect(Object o, Object o2) throws IOException {
-		final OUT tuple = (OUT) new Tuple2(o,o2);
+	public void collect(KEYOUT keyout, VALUEOUT valueout) throws IOException {
+		final Tuple2<KEYOUT,VALUEOUT> tuple = new Tuple2(keyout,valueout);
 		if (this.collector != null) {
 			this.collector.collect(tuple);
 		}

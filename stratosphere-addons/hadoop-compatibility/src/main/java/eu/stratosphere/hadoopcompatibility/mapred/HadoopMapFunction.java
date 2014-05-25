@@ -38,25 +38,25 @@ import java.io.Serializable;
 
 /*TODO Modify class signature as soon as the TypeExtractor supports non identical generic input/output types and type
 erasure issues are fixed.*/
-public class HadoopMapFunction<IN extends Tuple2<? extends WritableComparable,? extends Writable>, OUT extends Tuple2<? extends WritableComparable, ? extends Writable>>
-		extends FlatMapFunction<IN, OUT> implements Serializable {
+public class HadoopMapFunction<KEYIN extends WritableComparable, VALUEIN extends Writable, KEYOUT extends WritableComparable, VALUEOUT extends Writable>
+		extends FlatMapFunction<Tuple2<KEYIN,VALUEIN>, Tuple2<KEYOUT,VALUEOUT>> implements Serializable {
 
 	private static final long serialVersionUID = 1L;
 
 	private JobConf jobConf;
 	private Mapper mapper;
 	private String mapperName;
-	private HadoopOutputCollector<OUT> outputCollector;
+	private HadoopOutputCollector<KEYOUT,VALUEOUT> outputCollector;
 	private Reporter reporter;
 
 	@SuppressWarnings("unchecked")
 	public HadoopMapFunction(JobConf jobConf) {
-		this(jobConf, new HadoopOutputCollector<OUT>(), new HadoopDummyReporter());
+		this(jobConf, new HadoopOutputCollector<KEYOUT,VALUEOUT>(), new HadoopDummyReporter());
 	}
 
 	@SuppressWarnings("unchecked")
 	public HadoopMapFunction(JobConf jobConf,
-							HadoopOutputCollector<OUT> outputCollector,
+							HadoopOutputCollector<KEYOUT,VALUEOUT> outputCollector,
 							Reporter reporter) {
 		this.jobConf = jobConf;
 		this.mapper = InstantiationUtil.instantiate(jobConf.getMapperClass());
@@ -67,7 +67,7 @@ public class HadoopMapFunction<IN extends Tuple2<? extends WritableComparable,? 
 
 	@SuppressWarnings("unchecked")
 	@Override
-	public void flatMap(IN value, Collector<OUT> out) throws Exception {
+	public void flatMap(Tuple2<KEYIN,VALUEIN> value, Collector<Tuple2<KEYOUT,VALUEOUT>> out) throws Exception {
 		outputCollector.set(out);
 		mapper.map(value.f0, value.f1, outputCollector, reporter);
 	}

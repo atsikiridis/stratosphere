@@ -12,22 +12,14 @@
  **********************************************************************************************************************/
 package eu.stratosphere.hadoopcompatibility.mapred.example;
 
-import eu.stratosphere.api.java.functions.FlatMapFunction;
+
 import eu.stratosphere.api.java.functions.GroupReduceFunction;
-import eu.stratosphere.api.java.functions.KeySelector;
-import eu.stratosphere.api.java.functions.MapFunction;
 import eu.stratosphere.api.java.operators.Grouping;
-import eu.stratosphere.api.java.operators.ReduceGroupOperator;
 import eu.stratosphere.hadoopcompatibility.mapred.HadoopMapFunction;
 import eu.stratosphere.hadoopcompatibility.mapred.HadoopReduceFunction;
-import eu.stratosphere.util.Collector;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.io.IntWritable;
-import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
-import org.apache.hadoop.io.Writable;
-import org.apache.hadoop.io.WritableComparable;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.OutputCollector;
 import org.apache.hadoop.mapred.Reporter;
@@ -38,14 +30,11 @@ import eu.stratosphere.api.java.ExecutionEnvironment;
 import eu.stratosphere.api.java.tuple.Tuple2;
 import eu.stratosphere.hadoopcompatibility.mapred.HadoopInputFormat;
 import eu.stratosphere.hadoopcompatibility.mapred.HadoopOutputFormat;
-import org.apache.hadoop.mapred.lib.IdentityMapper;
-import org.apache.hadoop.mapred.lib.IdentityReducer;
 import org.apache.hadoop.mapred.lib.LongSumReducer;
 import org.apache.hadoop.mapred.lib.TokenCountMapper;
 
 import java.io.IOException;
 import java.io.Serializable;
-import java.util.Iterator;
 
 /**
  * Implements a Hadoop  job that simply passes through the mapper and the reducer
@@ -81,8 +70,8 @@ public class FullWordCount {
 
 		//Set the mapper implementation to be used.
 		hadoopJobConf.setMapperClass(TestTokenizeMap.class);
-		DataSet<Tuple2<Text, LongWritable>> words = text.flatMap( new HadoopMapFunction<Tuple2<LongWritable, Text>,
-				Tuple2<Text, LongWritable>>(hadoopJobConf){});
+		DataSet<Tuple2<Text, LongWritable>> words = text.flatMap( new HadoopMapFunction<LongWritable, Text,
+				Text, LongWritable>(hadoopJobConf){});
 
 		hadoopJobConf.setReducerClass(LongSumReducer.class);
 		hadoopJobConf.setCombinerClass(LongSumReducer.class);  // The same reducer implementation as a local combiner.
@@ -115,8 +104,7 @@ public class FullWordCount {
 	 * we have this class.
 	 */
 	@GroupReduceFunction.Combinable
-	public static class CombinableReduceFunction extends HadoopReduceFunction< Tuple2<Text, LongWritable>,
-			Tuple2<Text,LongWritable>>
+	public static class CombinableReduceFunction extends HadoopReduceFunction<Text, LongWritable, Text, LongWritable>
 			implements Serializable {
 
 		public CombinableReduceFunction(JobConf jobConf) {
