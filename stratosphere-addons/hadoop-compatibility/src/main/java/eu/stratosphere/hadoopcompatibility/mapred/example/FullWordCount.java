@@ -14,13 +14,23 @@ package eu.stratosphere.hadoopcompatibility.mapred.example;
 
 import eu.stratosphere.api.java.functions.FlatMapFunction;
 import eu.stratosphere.api.java.functions.GroupReduceFunction;
+import eu.stratosphere.api.java.functions.KeySelector;
+import eu.stratosphere.api.java.functions.MapFunction;
+import eu.stratosphere.api.java.operators.Grouping;
+import eu.stratosphere.api.java.operators.ReduceGroupOperator;
 import eu.stratosphere.hadoopcompatibility.mapred.HadoopMapFunction;
 import eu.stratosphere.hadoopcompatibility.mapred.HadoopReduceFunction;
+import eu.stratosphere.util.Collector;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
+import org.apache.hadoop.io.Writable;
+import org.apache.hadoop.io.WritableComparable;
 import org.apache.hadoop.mapred.JobConf;
+import org.apache.hadoop.mapred.OutputCollector;
+import org.apache.hadoop.mapred.Reporter;
 import org.apache.hadoop.mapred.TextInputFormat;
 import org.apache.hadoop.mapred.TextOutputFormat;
 import eu.stratosphere.api.java.DataSet;
@@ -30,6 +40,12 @@ import eu.stratosphere.hadoopcompatibility.mapred.HadoopInputFormat;
 import eu.stratosphere.hadoopcompatibility.mapred.HadoopOutputFormat;
 import org.apache.hadoop.mapred.lib.IdentityMapper;
 import org.apache.hadoop.mapred.lib.IdentityReducer;
+import org.apache.hadoop.mapred.lib.LongSumReducer;
+import org.apache.hadoop.mapred.lib.TokenCountMapper;
+
+import java.io.IOException;
+import java.io.Serializable;
+import java.util.Iterator;
 
 /**
  * Implements a Hadoop  job that simply passes through the mapper and the reducer
@@ -38,12 +54,12 @@ import org.apache.hadoop.mapred.lib.IdentityReducer;
  * This example shows how a simple hadoop job can be run on Stratosphere.
  */
 @SuppressWarnings("serial")
-public class Identity {
+public class FullWordCount {
 
 	@SuppressWarnings("unchecked")
 	public static void main(String[] args) throws Exception {
 		if (args.length < 2) {
-			System.err.println("Usage: Identityt <input path> <result path>");
+			System.err.println("Usage: FulllWordCount <input path> <result path>");
 			return;
 		}
 
@@ -63,32 +79,49 @@ public class Identity {
 		// Create a Stratosphere job with it
 		DataSet<Tuple2<LongWritable, Text>> text = env.createInput(hadoopInputFormat);
 
-		// Set the implementation of the hadoop mapper to be used in hadoop's configuration.
-		hadoopJobConf.setMapperClass(IdentityMapper.class);
-		// Use the information from hadoop's configuration to instantiate a stratosphere map function.
-		FlatMapFunction<Tuple2<LongWritable, Text>, Tuple2<LongWritable, Text>> mapWrapper =
-				(FlatMapFunction) new HadoopMapFunction<Tuple2<LongWritable,Text>, Tuple2<LongWritable, Text>>(hadoopJobConf);
-		DataSet<Tuple2<LongWritable, Text>> words = text.flatMap(mapWrapper);
+		//Set the mapper implementation to be used.
+		hadoopJobConf.setMapperClass(TestTokenizeMap.class);
+		DataSet<Tuple2<Text, LongWritable>> words = text.flatMap( new HadoopMapFunction<Tuple2<LongWritable, Text>,
+				Tuple2<Text, LongWritable>>(hadoopJobConf){});
 
+		hadoopJobConf.setReducerClass(LongSumReducer.class);
+		hadoopJobConf.setCombinerClass(LongSumReducer.class);  // The same reducer implementation as a local combiner.
 
-		// The same process for a reducer.
-		hadoopJobConf.setReducerClass(IdentityReducer.class);
-		hadoopJobConf.setCombinerClass(IdentityReducer.class);  // The same reducer implementation as a local combiner.
-		GroupReduceFunction<Tuple2<LongWritable, Text>, Tuple2<LongWritable, Text>> reduceWrapper =
-				new HadoopReduceFunction<Tuple2<LongWritable, Text>, Tuple2<LongWritable, Text>>(hadoopJobConf);
-		DataSet<Tuple2<LongWritable, Text>> result = words.reduceGroup(reduceWrapper);
+		Grouping<Tuple2<Text, LongWritable>> grouping = words.groupBy(0); //FIXME The grouping has a bug, see #860
+		DataSet<Tuple2<Text,LongWritable>> result = grouping.reduceGroup(new CombinableReduceFunction(hadoopJobConf));
 
-
-
-		// Set up Hadoop Output Format
-		TextOutputFormat<LongWritable,Text> outputFormat =new TextOutputFormat<LongWritable, Text>();
-		HadoopOutputFormat<LongWritable, Text> hadoopOutputFormat =
-				new HadoopOutputFormat<LongWritable, Text>(outputFormat, hadoopJobConf);
+        TextOutputFormat outputFormat = new TextOutputFormat<Text, LongWritable>();
+		HadoopOutputFormat<Text, LongWritable> hadoopOutputFormat =
+				new HadoopOutputFormat<Text, LongWritable>(outputFormat, hadoopJobConf);
 		hadoopOutputFormat.getJobConf().set("mapred.textoutputformat.separator", " ");
 		TextOutputFormat.setOutputPath(hadoopOutputFormat.getJobConf(), new Path(outputPath));
 
 		// Output & Execute
 		result.output(hadoopOutputFormat);
-		env.execute("Identity");
+		env.execute("FullWordCount");
+	}
+
+	public static class TestTokenizeMap<K> extends TokenCountMapper<K> {
+		@Override
+		public void map(K key, Text value, OutputCollector<Text, LongWritable> output,
+						Reporter reporter) throws IOException{
+			Text strippedValue = new Text(value.toString().toLowerCase().replaceAll("\\W+", " "));
+			super.map(key, strippedValue, output, reporter);
+		}
+	}
+
+	/**
+	 * Due to the fact that we have to subclass the HadoopReduceFunction and annotations are not inheritable, for now
+	 * we have this class.
+	 */
+	@GroupReduceFunction.Combinable
+	public static class CombinableReduceFunction extends HadoopReduceFunction< Tuple2<Text, LongWritable>,
+			Tuple2<Text,LongWritable>>
+			implements Serializable {
+
+		public CombinableReduceFunction(JobConf jobConf) {
+			super(jobConf);
+		}
+
 	}
 }

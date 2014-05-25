@@ -36,7 +36,7 @@ public class HadoopOutputCollector<OUT extends Tuple2>
 	@Override
 	public void collect(Object o, Object o2) throws IOException {
 		final OUT tuple = (OUT) new Tuple2(o,o2);
-		if (this.collector == null) {
+		if (this.collector != null) {
 			this.collector.collect(tuple);
 		}
 		else {
