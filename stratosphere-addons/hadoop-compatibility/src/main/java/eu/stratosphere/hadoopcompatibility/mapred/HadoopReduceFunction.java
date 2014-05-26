@@ -24,6 +24,7 @@ import eu.stratosphere.util.Collector;
 import eu.stratosphere.util.InstantiationUtil;
 import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.io.WritableComparable;
+import org.apache.hadoop.io.WritableUtils;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.Reducer;
 import org.apache.hadoop.mapred.Reporter;
@@ -72,7 +73,7 @@ public class HadoopReduceFunction<KEYIN extends WritableComparable, VALUEIN exte
 	 * A wrapping iterator for an iterator of key-value tuples that can be used as an iterator of values. Moreover,
 	 * there is always a reference to the key corresponding to the value that is currently being traversed.
 	 */
-	public static class ReducerTransformingIterator<T,K> extends TupleUnwrappingIterator<T,K> implements java.io.Serializable {
+	public class ReducerTransformingIterator<T extends Writable,K extends WritableComparable> extends TupleUnwrappingIterator<T,K> implements java.io.Serializable {
 
 		private static final long serialVersionUID = 1L;
 		private Iterator<Tuple2<K,T>> iterator;
@@ -82,7 +83,6 @@ public class HadoopReduceFunction<KEYIN extends WritableComparable, VALUEIN exte
 		@Override()
 		public void set(Iterator<Tuple2<K,T>> iterator) {
 			this.iterator = iterator;
-
 			if(this.hasNext()) {
 				this.first = iterator.next();
 				this.key = this.first.f0;
@@ -105,12 +105,11 @@ public class HadoopReduceFunction<KEYIN extends WritableComparable, VALUEIN exte
 				return val;
 			}
 			final Tuple2<K,T> tuple = iterator.next();
-			this.key = tuple.f0;
 			return tuple.f1;
 		}
 
-		public Object getKey() {
-			return this.key;
+		private K getKey() {
+			return WritableUtils.clone(this.key, jobConf);
 		}
 
 		@Override
@@ -124,7 +123,7 @@ public class HadoopReduceFunction<KEYIN extends WritableComparable, VALUEIN exte
 	public void reduce(Iterator<Tuple2<KEYIN,VALUEIN>> values, Collector<Tuple2<KEYOUT,VALUEOUT>> out) throws Exception {
 		outputCollector.set(out);
 		iterator.set(values);
-		this.reducer.reduce(iterator.getKey() , iterator, outputCollector, reporter);
+		this.reducer.reduce(iterator.getKey(), iterator, outputCollector, reporter);
 	}
 
 	/**
