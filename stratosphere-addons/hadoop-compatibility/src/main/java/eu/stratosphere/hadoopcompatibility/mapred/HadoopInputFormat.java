@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 
+import eu.stratosphere.types.TypeInformation;
 import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.RecordReader;
@@ -27,7 +28,6 @@ import eu.stratosphere.api.common.io.statistics.BaseStatistics;
 import eu.stratosphere.api.java.tuple.Tuple2;
 import eu.stratosphere.api.java.typeutils.ResultTypeQueryable;
 import eu.stratosphere.api.java.typeutils.TupleTypeInfo;
-import eu.stratosphere.api.java.typeutils.TypeInformation;
 import eu.stratosphere.api.java.typeutils.WritableTypeInfo;
 import eu.stratosphere.configuration.Configuration;
 import eu.stratosphere.hadoopcompatibility.mapred.utils.HadoopConfiguration;

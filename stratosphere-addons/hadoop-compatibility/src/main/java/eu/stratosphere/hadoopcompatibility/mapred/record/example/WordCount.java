@@ -17,6 +17,7 @@ import java.io.Serializable;
 import java.util.Iterator;
 import java.util.StringTokenizer;
 
+import eu.stratosphere.api.java.record.operators.FileDataSink;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
@@ -26,7 +27,6 @@ import org.apache.hadoop.mapred.TextInputFormat;
 import eu.stratosphere.api.common.Plan;
 import eu.stratosphere.api.common.Program;
 import eu.stratosphere.api.common.ProgramDescription;
-import eu.stratosphere.api.common.operators.FileDataSink;
 import eu.stratosphere.api.java.record.functions.FunctionAnnotation.ConstantFields;
 import eu.stratosphere.api.java.record.functions.MapFunction;
 import eu.stratosphere.api.java.record.functions.ReduceFunction;

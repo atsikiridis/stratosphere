@@ -76,8 +76,7 @@ public class FullWordCount {
 		hadoopJobConf.setReducerClass(LongSumReducer.class);
 		hadoopJobConf.setCombinerClass(LongSumReducer.class);  // The same reducer implementation as a local combiner.
 
-		Grouping<Tuple2<Text, LongWritable>> grouping = words.groupBy(0); //FIXME The grouping has a bug, see #860
-		DataSet<Tuple2<Text,LongWritable>> result = grouping.reduceGroup(new CombinableReduceFunction(hadoopJobConf));
+		DataSet<Tuple2<Text,LongWritable>> result = words.groupBy(0).reduceGroup(new CombinableReduceFunction(hadoopJobConf));
 
         TextOutputFormat outputFormat = new TextOutputFormat<Text, LongWritable>();
 		HadoopOutputFormat<Text, LongWritable> hadoopOutputFormat =
