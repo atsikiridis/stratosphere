@@ -17,6 +17,7 @@ import eu.stratosphere.api.java.functions.GroupReduceFunction;
 import eu.stratosphere.api.java.operators.Grouping;
 import eu.stratosphere.hadoopcompatibility.mapred.HadoopMapFunction;
 import eu.stratosphere.hadoopcompatibility.mapred.HadoopReduceFunction;
+import eu.stratosphere.util.Collector;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
@@ -35,6 +36,7 @@ import org.apache.hadoop.mapred.lib.TokenCountMapper;
 
 import java.io.IOException;
 import java.io.Serializable;
+import java.util.Iterator;
 
 /**
  * Implements a Hadoop  job that simply passes through the mapper and the reducer
@@ -67,16 +69,23 @@ public class FullWordCount {
 
 		// Create a Stratosphere job with it
 		DataSet<Tuple2<LongWritable, Text>> text = env.createInput(hadoopInputFormat);
-
-		//Set the mapper implementation to be used.
 		hadoopJobConf.setMapperClass(TestTokenizeMap.class);
+		hadoopJobConf.setMapOutputKeyClass(Text.class);
+		hadoopJobConf.setMapOutputValueClass(LongWritable.class);
+		hadoopJobConf.setOutputKeyClass(Text.class);
+		hadoopJobConf.setOutputValueClass(LongWritable.class);
+		//Set the mapper implementation to be used.
 		DataSet<Tuple2<Text, LongWritable>> words = text.flatMap( new HadoopMapFunction<LongWritable, Text,
-				Text, LongWritable>(hadoopJobConf){});
+				Text, LongWritable>(hadoopJobConf));
+
+
+
 
 		hadoopJobConf.setReducerClass(LongSumReducer.class);
 		hadoopJobConf.setCombinerClass(LongSumReducer.class);  // The same reducer implementation as a local combiner.
 
-		DataSet<Tuple2<Text,LongWritable>> result = words.groupBy(0).reduceGroup(new CombinableReduceFunction(hadoopJobConf));
+		DataSet<Tuple2<Text,LongWritable>> result = words.groupBy(0).reduceGroup(new HadoopReduceFunction<Text, LongWritable, Text, LongWritable>(hadoopJobConf)
+			);//new HadoopReduceFunction<Text, LongWritable, Text, LongWritable>(hadoopJobConf));
 
         TextOutputFormat outputFormat = new TextOutputFormat<Text, LongWritable>();
 		HadoopOutputFormat<Text, LongWritable> hadoopOutputFormat =
@@ -98,17 +107,6 @@ public class FullWordCount {
 		}
 	}
 
-	/**
-	 * Due to the fact that we have to subclass the HadoopReduceFunction and annotations are not inheritable, for now
-	 * we have this class.
-	 */
-	@GroupReduceFunction.Combinable
-	public static class CombinableReduceFunction extends HadoopReduceFunction<Text, LongWritable, Text, LongWritable>
-			implements Serializable {
 
-		public CombinableReduceFunction(JobConf jobConf) {
-			super(jobConf);
-		}
 
-	}
 }

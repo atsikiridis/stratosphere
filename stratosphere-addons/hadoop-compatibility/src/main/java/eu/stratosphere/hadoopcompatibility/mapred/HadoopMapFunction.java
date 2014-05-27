@@ -15,11 +15,19 @@ package eu.stratosphere.hadoopcompatibility.mapred;
 
 import eu.stratosphere.api.java.functions.FlatMapFunction;
 import eu.stratosphere.api.java.tuple.Tuple2;
+import eu.stratosphere.api.java.typeutils.ResultTypeQueryable;
+import eu.stratosphere.api.java.typeutils.TupleTypeInfo;
+import eu.stratosphere.api.java.typeutils.TypeInfoParser;
+import eu.stratosphere.api.java.typeutils.WritableTypeInfo;
 import eu.stratosphere.hadoopcompatibility.mapred.utils.HadoopConfiguration;
 import eu.stratosphere.hadoopcompatibility.mapred.wrapper.HadoopDummyReporter;
 import eu.stratosphere.hadoopcompatibility.mapred.wrapper.HadoopOutputCollector;
+import eu.stratosphere.types.TypeInformation;
 import eu.stratosphere.util.Collector;
 import eu.stratosphere.util.InstantiationUtil;
+import eu.stratosphere.util.ReflectionUtil;
+import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.Text;
 import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.io.WritableComparable;
 import org.apache.hadoop.mapred.JobConf;
@@ -39,7 +47,7 @@ import java.io.Serializable;
 /*TODO Modify class signature as soon as the TypeExtractor supports non identical generic input/output types and type
 erasure issues are fixed.*/
 public class HadoopMapFunction<KEYIN extends WritableComparable, VALUEIN extends Writable, KEYOUT extends WritableComparable, VALUEOUT extends Writable>
-		extends FlatMapFunction<Tuple2<KEYIN,VALUEIN>, Tuple2<KEYOUT,VALUEOUT>> implements Serializable {
+		extends FlatMapFunction<Tuple2<KEYIN,VALUEIN>, Tuple2<KEYOUT,VALUEOUT>> implements Serializable, ResultTypeQueryable<Tuple2<KEYOUT,VALUEOUT>> {
 
 	private static final long serialVersionUID = 1L;
 
@@ -48,6 +56,8 @@ public class HadoopMapFunction<KEYIN extends WritableComparable, VALUEIN extends
 	private String mapperName;
 	private HadoopOutputCollector<KEYOUT,VALUEOUT> outputCollector;
 	private Reporter reporter;
+	private Class<KEYOUT> keyoutClass;
+	private Class<VALUEOUT> valueoutClass;
 
 	@SuppressWarnings("unchecked")
 	public HadoopMapFunction(JobConf jobConf) {
@@ -63,6 +73,9 @@ public class HadoopMapFunction<KEYIN extends WritableComparable, VALUEIN extends
 		this.mapperName = mapper.getClass().getName();
 		this.outputCollector = outputCollector;
 		this.reporter = reporter;
+		this.keyoutClass = (Class<KEYOUT>) this.jobConf.getMapOutputKeyClass();
+		this.valueoutClass = (Class<VALUEOUT>) this.jobConf.getMapOutputValueClass();
+		System.out.println(this.jobConf.getOutputKeyClass() + " " + this.jobConf.getOutputValueClass());
 	}
 
 	@SuppressWarnings("unchecked")
@@ -98,5 +111,10 @@ public class HadoopMapFunction<KEYIN extends WritableComparable, VALUEIN extends
 		ReflectionUtils.setConf(mapper, jobConf);
 		outputCollector = InstantiationUtil.instantiate(HadoopConfiguration.getOutputCollectorFromConf(jobConf));
 		reporter = InstantiationUtil.instantiate(HadoopConfiguration.getReporterFromConf(jobConf));
+	}
+
+    @Override
+	public TypeInformation<Tuple2<KEYOUT,VALUEOUT>> getProducedType() {
+		return new TupleTypeInfo<Tuple2<KEYOUT,VALUEOUT>>(new WritableTypeInfo<WritableComparable>((Class<WritableComparable>) keyoutClass), new WritableTypeInfo<Writable>((Class<Writable>) valueoutClass));
 	}
 }

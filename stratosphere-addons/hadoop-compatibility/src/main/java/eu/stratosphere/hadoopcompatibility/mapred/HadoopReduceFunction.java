@@ -17,11 +17,19 @@ import eu.stratosphere.api.java.functions.GroupReduceFunction;
 import eu.stratosphere.api.java.operators.translation.TupleUnwrappingIterator;
 import eu.stratosphere.api.java.record.operators.ReduceOperator.Combinable;
 import eu.stratosphere.api.java.tuple.Tuple2;
+import eu.stratosphere.api.java.typeutils.BasicArrayTypeInfo;
+import eu.stratosphere.api.java.typeutils.ResultTypeQueryable;
+import eu.stratosphere.api.java.typeutils.TupleTypeInfo;
+import eu.stratosphere.api.java.typeutils.TypeInfoParser;
+import eu.stratosphere.api.java.typeutils.WritableTypeInfo;
 import eu.stratosphere.hadoopcompatibility.mapred.utils.HadoopConfiguration;
 import eu.stratosphere.hadoopcompatibility.mapred.wrapper.HadoopDummyReporter;
 import eu.stratosphere.hadoopcompatibility.mapred.wrapper.HadoopOutputCollector;
+import eu.stratosphere.pact.runtime.iterative.task.SyncEventHandler;
+import eu.stratosphere.types.TypeInformation;
 import eu.stratosphere.util.Collector;
 import eu.stratosphere.util.InstantiationUtil;
+import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.io.WritableComparable;
 import org.apache.hadoop.io.WritableUtils;
@@ -44,7 +52,7 @@ erasure issues are fixed.*/
 @Combinable //TODO Probably not all the times.
 public class HadoopReduceFunction<KEYIN extends WritableComparable, VALUEIN extends Writable, KEYOUT extends WritableComparable, VALUEOUT extends Writable>
 		extends GroupReduceFunction<Tuple2<KEYIN,VALUEIN>, Tuple2<KEYOUT,VALUEOUT>>
-		implements Serializable {
+		implements Serializable, ResultTypeQueryable<Tuple2<KEYOUT,VALUEOUT>> {
 
 	private static final long serialVersionUID = 1L;
 
@@ -54,6 +62,8 @@ public class HadoopReduceFunction<KEYIN extends WritableComparable, VALUEIN exte
 	private HadoopOutputCollector<KEYOUT,VALUEOUT> outputCollector;
 	private Reporter reporter;
 	private ReducerTransformingIterator iterator;
+	private Class<KEYOUT> keyoutClass;
+	private Class<VALUEOUT> valueoutClass;
 
 	@SuppressWarnings("unchecked")
 	public HadoopReduceFunction(JobConf jobConf) {
@@ -67,21 +77,29 @@ public class HadoopReduceFunction<KEYIN extends WritableComparable, VALUEIN exte
 		this.outputCollector = outputCollector;
 		this.iterator = new ReducerTransformingIterator();
 		this.reporter = reporter;
+		this.keyoutClass = (Class<KEYOUT>) this.jobConf.getOutputKeyClass();
+		this.valueoutClass = (Class<VALUEOUT>) this.jobConf.getOutputValueClass();
+		System.out.println(keyoutClass + " " + valueoutClass);
+
 	}
 
+	@Override
+	public TypeInformation<Tuple2<KEYOUT,VALUEOUT>> getProducedType() {
+		return new TupleTypeInfo<Tuple2<KEYOUT,VALUEOUT>>(new WritableTypeInfo<WritableComparable>((Class<WritableComparable>) keyoutClass), new WritableTypeInfo<Writable>((Class<Writable>) valueoutClass));
+	}
 	/**
 	 * A wrapping iterator for an iterator of key-value tuples that can be used as an iterator of values. Moreover,
 	 * there is always a reference to the key corresponding to the value that is currently being traversed.
 	 */
-	public class ReducerTransformingIterator<T extends Writable,K extends WritableComparable> extends TupleUnwrappingIterator<T,K> implements java.io.Serializable {
+	public class ReducerTransformingIterator extends TupleUnwrappingIterator<VALUEIN,KEYIN> implements java.io.Serializable, ResultTypeQueryable<Tuple2<KEYOUT,VALUEOUT>> {
 
 		private static final long serialVersionUID = 1L;
-		private Iterator<Tuple2<K,T>> iterator;
-		private K key;
-		private Tuple2<K,T> first;
+		private Iterator<Tuple2<KEYIN,VALUEIN>> iterator;
+		private KEYIN key;
+		private Tuple2<KEYIN,VALUEIN> first;
 
 		@Override()
-		public void set(Iterator<Tuple2<K,T>> iterator) {
+		public void set(Iterator<Tuple2<KEYIN,VALUEIN>> iterator) {
 			this.iterator = iterator;
 			if(this.hasNext()) {
 				this.first = iterator.next();
@@ -98,23 +116,28 @@ public class HadoopReduceFunction<KEYIN extends WritableComparable, VALUEIN exte
 		}
 
 		@Override
-		public T next() {
+		public VALUEIN next() {
 			if(this.first != null) {
-				T val = this.first.f1;
+				VALUEIN val = this.first.f1;
 				this.first = null;
 				return val;
 			}
-			final Tuple2<K,T> tuple = iterator.next();
+			final Tuple2<KEYIN,VALUEIN> tuple = iterator.next();
 			return tuple.f1;
 		}
 
-		private K getKey() {
+		private KEYIN getKey() {
 			return WritableUtils.clone(this.key, jobConf);
 		}
 
 		@Override
 		public void remove() {
 			throw new UnsupportedOperationException();
+		}
+
+		@Override
+		public TypeInformation<Tuple2<KEYOUT, VALUEOUT>> getProducedType() {
+			return  TypeInfoParser.parse("Tuple2<" + keyoutClass.getCanonicalName() +"," +valueoutClass.getCanonicalName() + ">");
 		}
 	}
 
@@ -155,7 +178,5 @@ public class HadoopReduceFunction<KEYIN extends WritableComparable, VALUEIN exte
 				HadoopConfiguration.getReporterFromConf(jobConf));
 		iterator = (ReducerTransformingIterator) in.readObject();
 	}
-
-
 
 }
