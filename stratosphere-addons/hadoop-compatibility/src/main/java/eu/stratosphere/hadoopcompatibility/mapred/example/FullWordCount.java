@@ -78,10 +78,12 @@ public class FullWordCount {
 		final ReduceGroupOperator<Tuple2<Text, LongWritable>,Tuple2<Text, LongWritable>> reduceOperator = words.
 				groupBy(0).
 				reduceGroup(new HadoopReduceFunction<Text, LongWritable,Text, LongWritable>(hadoopJobConf));
+
+		//The reducer will be called
 		reduceOperator.setCombinable(true);
 
 		//And the OutputFormat
-        final TextOutputFormat<Text, LongWritable> outputFormat = new TextOutputFormat<Text, LongWritable>();
+		final TextOutputFormat<Text, LongWritable> outputFormat = new TextOutputFormat<Text, LongWritable>();
 		final HadoopOutputFormat<Text, LongWritable> hadoopOutputFormat =
 				new HadoopOutputFormat<Text, LongWritable>(outputFormat, hadoopJobConf);
 		hadoopOutputFormat.getJobConf().set("mapred.textoutputformat.separator", " ");

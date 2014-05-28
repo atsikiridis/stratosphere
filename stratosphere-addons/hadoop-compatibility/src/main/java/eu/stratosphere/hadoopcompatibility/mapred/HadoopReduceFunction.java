@@ -18,7 +18,6 @@ import eu.stratosphere.api.java.operators.translation.TupleUnwrappingIterator;
 import eu.stratosphere.api.java.tuple.Tuple2;
 import eu.stratosphere.api.java.typeutils.ResultTypeQueryable;
 import eu.stratosphere.api.java.typeutils.TupleTypeInfo;
-import eu.stratosphere.api.java.typeutils.TypeInfoParser;
 import eu.stratosphere.api.java.typeutils.WritableTypeInfo;
 import eu.stratosphere.hadoopcompatibility.mapred.utils.HadoopConfiguration;
 import eu.stratosphere.hadoopcompatibility.mapred.wrapper.HadoopDummyReporter;
@@ -78,7 +77,7 @@ public class HadoopReduceFunction<KEYIN extends WritableComparable, VALUEIN exte
 	 * there is always a reference to the key corresponding to the value that is currently being traversed.
 	 */
 	private final class ReducerTransformingIterator extends TupleUnwrappingIterator<VALUEIN,KEYIN>
-			implements java.io.Serializable {//ResultTypeQueryable<Tuple2<KEYOUT,VALUEOUT>> {
+			implements java.io.Serializable {
 
 		private static final long serialVersionUID = 1L;
 		private Iterator<Tuple2<KEYIN,VALUEIN>> iterator;
@@ -124,7 +123,8 @@ public class HadoopReduceFunction<KEYIN extends WritableComparable, VALUEIN exte
 	}
 
 	@Override
-	public void reduce(Iterator<Tuple2<KEYIN,VALUEIN>> values, Collector<Tuple2<KEYOUT,VALUEOUT>> out) throws Exception {
+	public void reduce(Iterator<Tuple2<KEYIN,VALUEIN>> values, Collector<Tuple2<KEYOUT,VALUEOUT>> out)
+			throws Exception {
 		outputCollector.set(out);
 		iterator.set(values);
 		this.reducer.reduce(iterator.getKey(), iterator, outputCollector, reporter);
