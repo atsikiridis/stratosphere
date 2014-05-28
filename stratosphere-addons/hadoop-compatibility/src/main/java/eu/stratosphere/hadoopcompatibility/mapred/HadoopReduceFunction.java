@@ -15,9 +15,7 @@ package eu.stratosphere.hadoopcompatibility.mapred;
 
 import eu.stratosphere.api.java.functions.GroupReduceFunction;
 import eu.stratosphere.api.java.operators.translation.TupleUnwrappingIterator;
-import eu.stratosphere.api.java.record.operators.ReduceOperator.Combinable;
 import eu.stratosphere.api.java.tuple.Tuple2;
-import eu.stratosphere.api.java.typeutils.BasicArrayTypeInfo;
 import eu.stratosphere.api.java.typeutils.ResultTypeQueryable;
 import eu.stratosphere.api.java.typeutils.TupleTypeInfo;
 import eu.stratosphere.api.java.typeutils.TypeInfoParser;
@@ -25,11 +23,9 @@ import eu.stratosphere.api.java.typeutils.WritableTypeInfo;
 import eu.stratosphere.hadoopcompatibility.mapred.utils.HadoopConfiguration;
 import eu.stratosphere.hadoopcompatibility.mapred.wrapper.HadoopDummyReporter;
 import eu.stratosphere.hadoopcompatibility.mapred.wrapper.HadoopOutputCollector;
-import eu.stratosphere.pact.runtime.iterative.task.SyncEventHandler;
 import eu.stratosphere.types.TypeInformation;
 import eu.stratosphere.util.Collector;
 import eu.stratosphere.util.InstantiationUtil;
-import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.io.WritableComparable;
 import org.apache.hadoop.io.WritableUtils;
@@ -46,52 +42,43 @@ import java.util.Iterator;
 /**
  * The wrapper for a Hadoop Reducer (mapred API).
  */
-/*TODO Modify class signature as soon as the TypeExtractor supports non identical generic input/output types and type
-erasure issues are fixed.*/
-
-@Combinable //TODO Probably not all the times.
-public class HadoopReduceFunction<KEYIN extends WritableComparable, VALUEIN extends Writable, KEYOUT extends WritableComparable, VALUEOUT extends Writable>
-		extends GroupReduceFunction<Tuple2<KEYIN,VALUEIN>, Tuple2<KEYOUT,VALUEOUT>>
-		implements Serializable, ResultTypeQueryable<Tuple2<KEYOUT,VALUEOUT>> {
+public class HadoopReduceFunction<KEYIN extends WritableComparable, VALUEIN extends Writable,
+		KEYOUT extends WritableComparable, VALUEOUT extends Writable> extends GroupReduceFunction<Tuple2<KEYIN,VALUEIN>,
+		Tuple2<KEYOUT,VALUEOUT>> implements Serializable, ResultTypeQueryable<Tuple2<KEYOUT,VALUEOUT>> {
 
 	private static final long serialVersionUID = 1L;
 
+	private final Class<KEYOUT> keyoutClass;
+	private final Class<VALUEOUT> valueoutClass;
+
 	private JobConf jobConf;
-	private Reducer reducer;
-	private String reducerName;
+	private Reducer<KEYIN,VALUEIN,KEYOUT,VALUEOUT> reducer;
 	private HadoopOutputCollector<KEYOUT,VALUEOUT> outputCollector;
 	private Reporter reporter;
 	private ReducerTransformingIterator iterator;
-	private Class<KEYOUT> keyoutClass;
-	private Class<VALUEOUT> valueoutClass;
 
-	@SuppressWarnings("unchecked")
 	public HadoopReduceFunction(JobConf jobConf) {
 		this(jobConf, new HadoopOutputCollector<KEYOUT,VALUEOUT>(), new HadoopDummyReporter());
 	}
 
-	public HadoopReduceFunction(JobConf jobConf, HadoopOutputCollector<KEYOUT,VALUEOUT> outputCollector, Reporter reporter) {
+	@SuppressWarnings("unchecked")
+	public HadoopReduceFunction(JobConf jobConf, HadoopOutputCollector<KEYOUT,VALUEOUT> outputCollector,
+								Reporter reporter) {
 		this.jobConf = jobConf;
 		this.reducer = InstantiationUtil.instantiate(jobConf.getReducerClass());
-		this.reducerName = reducer.getClass().getName();
 		this.outputCollector = outputCollector;
 		this.iterator = new ReducerTransformingIterator();
 		this.reporter = reporter;
 		this.keyoutClass = (Class<KEYOUT>) this.jobConf.getOutputKeyClass();
 		this.valueoutClass = (Class<VALUEOUT>) this.jobConf.getOutputValueClass();
-		System.out.println(keyoutClass + " " + valueoutClass);
-
 	}
 
-	@Override
-	public TypeInformation<Tuple2<KEYOUT,VALUEOUT>> getProducedType() {
-		return new TupleTypeInfo<Tuple2<KEYOUT,VALUEOUT>>(new WritableTypeInfo<WritableComparable>((Class<WritableComparable>) keyoutClass), new WritableTypeInfo<Writable>((Class<Writable>) valueoutClass));
-	}
 	/**
 	 * A wrapping iterator for an iterator of key-value tuples that can be used as an iterator of values. Moreover,
 	 * there is always a reference to the key corresponding to the value that is currently being traversed.
 	 */
-	public class ReducerTransformingIterator extends TupleUnwrappingIterator<VALUEIN,KEYIN> implements java.io.Serializable, ResultTypeQueryable<Tuple2<KEYOUT,VALUEOUT>> {
+	private final class ReducerTransformingIterator extends TupleUnwrappingIterator<VALUEIN,KEYIN>
+			implements java.io.Serializable {//ResultTypeQueryable<Tuple2<KEYOUT,VALUEOUT>> {
 
 		private static final long serialVersionUID = 1L;
 		private Iterator<Tuple2<KEYIN,VALUEIN>> iterator;
@@ -118,7 +105,7 @@ public class HadoopReduceFunction<KEYIN extends WritableComparable, VALUEIN exte
 		@Override
 		public VALUEIN next() {
 			if(this.first != null) {
-				VALUEIN val = this.first.f1;
+				final VALUEIN val = this.first.f1;
 				this.first = null;
 				return val;
 			}
@@ -134,14 +121,8 @@ public class HadoopReduceFunction<KEYIN extends WritableComparable, VALUEIN exte
 		public void remove() {
 			throw new UnsupportedOperationException();
 		}
-
-		@Override
-		public TypeInformation<Tuple2<KEYOUT, VALUEOUT>> getProducedType() {
-			return  TypeInfoParser.parse("Tuple2<" + keyoutClass.getCanonicalName() +"," +valueoutClass.getCanonicalName() + ">");
-		}
 	}
 
-	@SuppressWarnings("unchecked")
 	@Override
 	public void reduce(Iterator<Tuple2<KEYIN,VALUEIN>> values, Collector<Tuple2<KEYOUT,VALUEOUT>> out) throws Exception {
 		outputCollector.set(out);
@@ -149,25 +130,28 @@ public class HadoopReduceFunction<KEYIN extends WritableComparable, VALUEIN exte
 		this.reducer.reduce(iterator.getKey(), iterator, outputCollector, reporter);
 	}
 
+	@Override
+	public TypeInformation<Tuple2<KEYOUT,VALUEOUT>> getProducedType() {
+		final WritableTypeInfo<KEYOUT> keyTypeInfo = new WritableTypeInfo<KEYOUT>(keyoutClass);
+		final WritableTypeInfo<VALUEOUT> valueTypleInfo = new WritableTypeInfo<VALUEOUT>(valueoutClass);
+		return new TupleTypeInfo<Tuple2<KEYOUT,VALUEOUT>>(keyTypeInfo, valueTypleInfo);
+	}
+
 	/**
 	 * Custom serialization methods.
 	 *  @see http://docs.oracle.com/javase/7/docs/api/java/io/Serializable.html
 	 */
 	private void writeObject(ObjectOutputStream out) throws IOException {
-		out.writeUTF(reducerName);
 		jobConf.write(out);
 		out.writeObject(iterator);
 	}
 
 	@SuppressWarnings("unchecked")
 	private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
-		reducerName = in.readUTF();
-		if(jobConf == null) {
-			jobConf = new JobConf();
-		}
+		jobConf = new JobConf();
 		jobConf.readFields(in);
 		try {
-			this.reducer = (Reducer) Class.forName(this.reducerName).newInstance();
+			this.reducer = (Reducer) InstantiationUtil.instantiate(jobConf.getReducerClass());
 		} catch (Exception e) {
 			throw new RuntimeException("Unable to instantiate the hadoop reducer", e);
 		}

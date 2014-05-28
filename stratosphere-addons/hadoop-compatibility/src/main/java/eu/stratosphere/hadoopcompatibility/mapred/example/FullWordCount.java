@@ -12,12 +12,9 @@
  **********************************************************************************************************************/
 package eu.stratosphere.hadoopcompatibility.mapred.example;
 
-
-import eu.stratosphere.api.java.functions.GroupReduceFunction;
-import eu.stratosphere.api.java.operators.Grouping;
+import eu.stratosphere.api.java.operators.ReduceGroupOperator;
 import eu.stratosphere.hadoopcompatibility.mapred.HadoopMapFunction;
 import eu.stratosphere.hadoopcompatibility.mapred.HadoopReduceFunction;
-import eu.stratosphere.util.Collector;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
@@ -35,66 +32,63 @@ import org.apache.hadoop.mapred.lib.LongSumReducer;
 import org.apache.hadoop.mapred.lib.TokenCountMapper;
 
 import java.io.IOException;
-import java.io.Serializable;
-import java.util.Iterator;
 
 /**
- * Implements a Hadoop  job that simply passes through the mapper and the reducer
- * without modifying the input data and writes to disk the offset and the input line
- * after sorting them (Identity Function).
+ * Implements a Hadoop wordcount on Stratosphere with all business logic code in Hadoop.
  * This example shows how a simple hadoop job can be run on Stratosphere.
  */
-@SuppressWarnings("serial")
 public class FullWordCount {
 
-	@SuppressWarnings("unchecked")
 	public static void main(String[] args) throws Exception {
 		if (args.length < 2) {
 			System.err.println("Usage: FulllWordCount <input path> <result path>");
 			return;
 		}
-
 		final String inputPath = args[0];
 		final String outputPath = args[1];
 
 		final ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
 		env.setDegreeOfParallelism(1);
 
-		JobConf hadoopJobConf = new JobConf();
+		//Hadoop's job configuration
+		final JobConf hadoopJobConf = new JobConf();
 
 		// Set up the Hadoop Input Format
-		HadoopInputFormat<LongWritable, Text> hadoopInputFormat = new HadoopInputFormat<LongWritable, Text>(new TextInputFormat(),
-				LongWritable.class, Text.class, hadoopJobConf);
+		final HadoopInputFormat<LongWritable, Text> hadoopInputFormat = new HadoopInputFormat<LongWritable,
+				Text>(new TextInputFormat(), LongWritable.class, Text.class, hadoopJobConf);
 		TextInputFormat.addInputPath(hadoopInputFormat.getJobConf(), new Path(inputPath));
 
 		// Create a Stratosphere job with it
-		DataSet<Tuple2<LongWritable, Text>> text = env.createInput(hadoopInputFormat);
+		final DataSet<Tuple2<LongWritable, Text>> text = env.createInput(hadoopInputFormat);
+
+		//Set the mapper implementation to be used.
 		hadoopJobConf.setMapperClass(TestTokenizeMap.class);
-		hadoopJobConf.setMapOutputKeyClass(Text.class);
-		hadoopJobConf.setMapOutputValueClass(LongWritable.class);
+
+		//In this job there is no need to specify out types for map output as they are the same
 		hadoopJobConf.setOutputKeyClass(Text.class);
 		hadoopJobConf.setOutputValueClass(LongWritable.class);
-		//Set the mapper implementation to be used.
-		DataSet<Tuple2<Text, LongWritable>> words = text.flatMap( new HadoopMapFunction<LongWritable, Text,
+
+		final DataSet<Tuple2<Text, LongWritable>> words = text.flatMap( new HadoopMapFunction<LongWritable,Text,
 				Text, LongWritable>(hadoopJobConf));
 
-
-
-
+		//Specifying the reducer.
 		hadoopJobConf.setReducerClass(LongSumReducer.class);
 		hadoopJobConf.setCombinerClass(LongSumReducer.class);  // The same reducer implementation as a local combiner.
 
-		DataSet<Tuple2<Text,LongWritable>> result = words.groupBy(0).reduceGroup(new HadoopReduceFunction<Text, LongWritable, Text, LongWritable>(hadoopJobConf)
-			);//new HadoopReduceFunction<Text, LongWritable, Text, LongWritable>(hadoopJobConf));
+		final ReduceGroupOperator<Tuple2<Text, LongWritable>,Tuple2<Text, LongWritable>> reduceOperator = words.
+				groupBy(0).
+				reduceGroup(new HadoopReduceFunction<Text, LongWritable,Text, LongWritable>(hadoopJobConf));
+		reduceOperator.setCombinable(true);
 
-        TextOutputFormat outputFormat = new TextOutputFormat<Text, LongWritable>();
-		HadoopOutputFormat<Text, LongWritable> hadoopOutputFormat =
+		//And the OutputFormat
+        final TextOutputFormat<Text, LongWritable> outputFormat = new TextOutputFormat<Text, LongWritable>();
+		final HadoopOutputFormat<Text, LongWritable> hadoopOutputFormat =
 				new HadoopOutputFormat<Text, LongWritable>(outputFormat, hadoopJobConf);
 		hadoopOutputFormat.getJobConf().set("mapred.textoutputformat.separator", " ");
 		TextOutputFormat.setOutputPath(hadoopOutputFormat.getJobConf(), new Path(outputPath));
 
 		// Output & Execute
-		result.output(hadoopOutputFormat);
+		reduceOperator.output(hadoopOutputFormat);
 		env.execute("FullWordCount");
 	}
 
@@ -102,7 +96,7 @@ public class FullWordCount {
 		@Override
 		public void map(K key, Text value, OutputCollector<Text, LongWritable> output,
 						Reporter reporter) throws IOException{
-			Text strippedValue = new Text(value.toString().toLowerCase().replaceAll("\\W+", " "));
+			final Text strippedValue = new Text(value.toString().toLowerCase().replaceAll("\\W+", " "));
 			super.map(key, strippedValue, output, reporter);
 		}
 	}

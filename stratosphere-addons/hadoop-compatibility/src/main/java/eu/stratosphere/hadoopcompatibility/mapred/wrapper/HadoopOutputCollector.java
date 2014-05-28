@@ -34,10 +34,9 @@ public class HadoopOutputCollector<KEYOUT extends WritableComparable, VALUEOUT e
 		this.collector = collector;
 	}
 
-	@SuppressWarnings("unchecked")
 	@Override
 	public void collect(KEYOUT keyout, VALUEOUT valueout) throws IOException {
-		final Tuple2<KEYOUT,VALUEOUT> tuple = new Tuple2(keyout,valueout);
+		final Tuple2<KEYOUT,VALUEOUT> tuple = new Tuple2<KEYOUT, VALUEOUT>(keyout, valueout);
 		if (this.collector != null) {
 			this.collector.collect(tuple);
 		}
