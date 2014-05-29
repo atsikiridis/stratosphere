@@ -47,8 +47,8 @@ public class HadoopReduceFunction<KEYIN extends WritableComparable, VALUEIN exte
 
 	private static final long serialVersionUID = 1L;
 
-	private final Class<KEYOUT> keyoutClass;
-	private final Class<VALUEOUT> valueoutClass;
+	private final transient Class<KEYOUT> keyoutClass;
+	private final transient Class<VALUEOUT> valueoutClass;
 
 	private JobConf jobConf;
 	private Reducer<KEYIN,VALUEIN,KEYOUT,VALUEOUT> reducer;

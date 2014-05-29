@@ -45,8 +45,8 @@ public class HadoopMapFunction<KEYIN extends WritableComparable, VALUEIN extends
 
 	private static final long serialVersionUID = 1L;
 
-	private final Class<KEYOUT> keyoutClass;
-	private final Class<VALUEOUT> valueoutClass;
+	private final transient Class<KEYOUT> keyoutClass;
+	private final transient Class<VALUEOUT> valueoutClass;
 
 	private JobConf jobConf;
 	private Mapper<KEYIN,VALUEIN,KEYOUT,VALUEOUT> mapper;
