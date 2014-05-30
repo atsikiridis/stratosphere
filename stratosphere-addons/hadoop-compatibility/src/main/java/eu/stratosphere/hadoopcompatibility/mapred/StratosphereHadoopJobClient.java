@@ -15,23 +15,16 @@ package eu.stratosphere.hadoopcompatibility.mapred;
 
 import eu.stratosphere.api.java.DataSet;
 import eu.stratosphere.api.java.ExecutionEnvironment;
-import eu.stratosphere.api.java.operators.Operator;
 import eu.stratosphere.api.java.operators.ReduceGroupOperator;
-import eu.stratosphere.api.java.record.operators.ReduceOperator;
-import eu.stratosphere.api.java.tuple.Tuple2;
 import eu.stratosphere.api.java.typeutils.TypeExtractor;
-import eu.stratosphere.pact.runtime.iterative.task.SyncEventHandler;
+import org.apache.hadoop.conf.Configurable;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
-import org.apache.hadoop.io.Writable;
-import org.apache.hadoop.io.WritableComparable;
 import org.apache.hadoop.mapred.InputFormat;
-import org.apache.hadoop.mapred.JobClient;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.OutputCollector;
-import org.apache.hadoop.mapred.Reducer;
 import org.apache.hadoop.mapred.Reporter;
 import org.apache.hadoop.mapred.RunningJob;
 import org.apache.hadoop.mapred.TextOutputFormat;
@@ -39,14 +32,13 @@ import org.apache.hadoop.mapred.lib.LongSumReducer;
 import org.apache.hadoop.mapred.lib.TokenCountMapper;
 
 import java.io.IOException;
-import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 
 
 /**
  * The user's view of Hadoop Job executed on a Stratosphere cluster.
  */
-public class StratosphereHadoopJobClient extends JobClient { //or not extend?
+public class StratosphereHadoopJobClient implements Configurable {
 
 	private JobConf  hadoopJobConf;
 
@@ -61,22 +53,21 @@ public class StratosphereHadoopJobClient extends JobClient { //or not extend?
 	/**
 	 * Submits a Hadoop job to Stratoshere (as described by the JobConf and returns after the job has been completed.
 	 */
-	public static RunningJob runJob(JobConf hadoopJobConf) throws IOException{
+	public static void runJob(JobConf hadoopJobConf) throws Exception{
 		final StratosphereHadoopJobClient jobClient = new StratosphereHadoopJobClient(hadoopJobConf);
-		return jobClient.submitJob(hadoopJobConf);
+		jobClient.submitJob(hadoopJobConf);
 	}
 
 	/**
 	 * Submits a job to Stratosphere and returns a RunningJob instance which can be scheduled and monitored
 	 * without blocking by default. Use waitForCompletion() to block until the job is finished.
 	 */
-	@Override
-	public RunningJob submitJob(JobConf hadoopJobConf) {
+	public void submitJob(JobConf hadoopJobConf) throws Exception{ //TODO should return a running job...
 		final ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
 		final DataSet input = env.createInput(getHadoopInputFormat(hadoopJobConf));
 		env.setDegreeOfParallelism(1);
 
-		final DataSet mapped = input.flatMap(new HadoopMapFunction(hadoopJobConf));//.setParallelism(mapTasksInParallel);
+		final DataSet mapped = input.flatMap(new HadoopMapFunction(hadoopJobConf));
 
 		final ReduceGroupOperator reduceOp = mapped.groupBy(0).reduceGroup(new HadoopReduceFunction(hadoopJobConf));
 
@@ -85,18 +76,11 @@ public class StratosphereHadoopJobClient extends JobClient { //or not extend?
 		if (combiner != null) {
 			reduceOp.setCombinable(true);
 		}
-		//reduceOp.setParallelism(reduceTasksInParallel);
+
 		final HadoopOutputFormat outputFormat = new HadoopOutputFormat(hadoopJobConf.getOutputFormat() ,hadoopJobConf);
-
-
 		reduceOp.output(outputFormat);
-		try {
-			env.execute(hadoopJobConf.getJobName());
-		}
-		catch (Exception e) {
-			System.out.println(e);
-		}
-		return null;  //TODO This should return a real RunningJob
+
+		env.execute(hadoopJobConf.getJobName());
 	}
 
 	@SuppressWarnings("unchecked")
@@ -123,33 +107,4 @@ public class StratosphereHadoopJobClient extends JobClient { //or not extend?
 	public Configuration getConf() {
 		return this.hadoopJobConf;
 	}
-
-	public static void main(String[] args) throws Exception{
-		final String inputPath = args[0];
-		final String outputPath = args[1];
-		JobConf c = new JobConf();
-		c.setInputFormat(org.apache.hadoop.mapred.TextInputFormat.class);
-		org.apache.hadoop.mapred.TextInputFormat.addInputPath(c, new Path(inputPath));
-		c.setOutputFormat(TextOutputFormat.class);
-		TextOutputFormat.setOutputPath(c, new Path(outputPath));
-		c.setMapperClass(TestTokenizeMap.class);
-		c.setOutputKeyClass(Text.class);
-		c.setOutputValueClass(LongWritable.class);
-		c.setReducerClass(LongSumReducer.class);
-		c.setCombinerClass((LongSumReducer.class));
-		c.set("mapred.textoutputformat.separator", " ");
-		StratosphereHadoopJobClient.runJob(c);
-	}
-
-
-	public static class TestTokenizeMap<K> extends TokenCountMapper<K> {
-		@Override
-		public void map(K key, Text value, OutputCollector<Text, LongWritable> output,
-						Reporter reporter) throws IOException{
-			final Text strippedValue = new Text(value.toString().toLowerCase().replaceAll("\\W+", " "));
-			super.map(key, strippedValue, output, reporter);
-		}
-	}
-
-
 }
