@@ -13,15 +13,14 @@
 
 package eu.stratosphere.hadoopcompatibility.mapred;
 
-import com.google.common.reflect.Reflection;
 import eu.stratosphere.api.java.DataSet;
 import eu.stratosphere.api.java.ExecutionEnvironment;
-import eu.stratosphere.api.java.io.TextInputFormat;
-import eu.stratosphere.api.java.record.functions.MapFunction;
+import eu.stratosphere.api.java.operators.Operator;
+import eu.stratosphere.api.java.operators.ReduceGroupOperator;
+import eu.stratosphere.api.java.record.operators.ReduceOperator;
 import eu.stratosphere.api.java.tuple.Tuple2;
 import eu.stratosphere.api.java.typeutils.TypeExtractor;
-import eu.stratosphere.hadoopcompatibility.mapred.record.datatypes.WritableComparableWrapper;
-import eu.stratosphere.types.TypeInformation;
+import eu.stratosphere.pact.runtime.iterative.task.SyncEventHandler;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.LongWritable;
@@ -32,12 +31,12 @@ import org.apache.hadoop.mapred.InputFormat;
 import org.apache.hadoop.mapred.JobClient;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.OutputCollector;
+import org.apache.hadoop.mapred.Reducer;
 import org.apache.hadoop.mapred.Reporter;
 import org.apache.hadoop.mapred.RunningJob;
 import org.apache.hadoop.mapred.TextOutputFormat;
 import org.apache.hadoop.mapred.lib.LongSumReducer;
 import org.apache.hadoop.mapred.lib.TokenCountMapper;
-import org.apache.hadoop.util.ReflectionUtils;
 
 import java.io.IOException;
 import java.lang.reflect.ParameterizedType;
@@ -47,15 +46,15 @@ import java.lang.reflect.Type;
 /**
  * The user's view of Hadoop Job executed on a Stratosphere cluster.
  */
-public class StratosphereJobClient extends JobClient { //or not extend?
+public class StratosphereHadoopJobClient extends JobClient { //or not extend?
 
 	private JobConf  hadoopJobConf;
 
-	public StratosphereJobClient() {
+	public StratosphereHadoopJobClient() {
 		this.hadoopJobConf = new JobConf();
 	}
 
-	public StratosphereJobClient(JobConf hadoopJobConf) {
+	public StratosphereHadoopJobClient(JobConf hadoopJobConf) {
 		this.hadoopJobConf = hadoopJobConf;
 	}
 
@@ -63,9 +62,8 @@ public class StratosphereJobClient extends JobClient { //or not extend?
 	 * Submits a Hadoop job to Stratoshere (as described by the JobConf and returns after the job has been completed.
 	 */
 	public static RunningJob runJob(JobConf hadoopJobConf) throws IOException{
-		StratosphereJobClient jobClient = new StratosphereJobClient(hadoopJobConf);
-		RunningJob runningJob = jobClient.submitJob(hadoopJobConf);
-		return runningJob;
+		final StratosphereHadoopJobClient jobClient = new StratosphereHadoopJobClient(hadoopJobConf);
+		return jobClient.submitJob(hadoopJobConf);
 	}
 
 	/**
@@ -74,54 +72,46 @@ public class StratosphereJobClient extends JobClient { //or not extend?
 	 */
 	@Override
 	public RunningJob submitJob(JobConf hadoopJobConf) {
-
 		final ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
+		final DataSet input = env.createInput(getHadoopInputFormat(hadoopJobConf));
 		env.setDegreeOfParallelism(1);
 
-		HadoopInputFormat inputFormat = getHadoopInputFormat(hadoopJobConf);
-		HadoopMapFunction mapFunction = getMapFunction(hadoopJobConf);
+		final DataSet mapped = input.flatMap(new HadoopMapFunction(hadoopJobConf));//.setParallelism(mapTasksInParallel);
 
-		HadoopReduceFunction<?,?,?,?> reduceFunction = getReduceFunction(hadoopJobConf);
+		final ReduceGroupOperator reduceOp = mapped.groupBy(0).reduceGroup(new HadoopReduceFunction(hadoopJobConf));
 
-		HadoopOutputFormat outputFormat = getOutputFormat(hadoopJobConf);
 
-		final DataSet<Tuple2<?, ?>> text = env.createInput(inputFormat);
-		DataSet mapped = text.flatMap(mapFunction);
-		DataSet result = mapped.groupBy(0).reduceGroup(reduceFunction);
-		result.output(outputFormat);
+		final Class combiner = hadoopJobConf.getCombinerClass();
+		if (combiner != null) {
+			reduceOp.setCombinable(true);
+		}
+		//reduceOp.setParallelism(reduceTasksInParallel);
+		final HadoopOutputFormat outputFormat = new HadoopOutputFormat(hadoopJobConf.getOutputFormat() ,hadoopJobConf);
+
+
+		reduceOp.output(outputFormat);
 		try {
-			env.execute("Test");
+			env.execute(hadoopJobConf.getJobName());
 		}
 		catch (Exception e) {
 			System.out.println(e);
 		}
-		return null;
+		return null;  //TODO This should return a real RunningJob
 	}
 
+	@SuppressWarnings("unchecked")
 	private HadoopInputFormat getHadoopInputFormat(JobConf jobConf) {
-		InputFormat<?,?> inputFormat = jobConf.getInputFormat();
-		Class key = (Class)((ParameterizedType) (inputFormat.getClass().getGenericSuperclass())).getActualTypeArguments()[0];
-		Class value  = (Class)((ParameterizedType) (inputFormat.getClass().getGenericSuperclass())).getActualTypeArguments()[1];
-		HadoopInputFormat<?,?> inputFormatWrapper = new HadoopInputFormat(inputFormat, key, value, jobConf);
+		final InputFormat inputFormat = jobConf.getInputFormat();
+		final Class inputFormatClass = inputFormat.getClass();
+		final Class inputFormatSuperClass = inputFormatClass.getSuperclass();  // What if super class not generic? TODO
 
+		final Type keyType  = TypeExtractor.getParameterType(inputFormatSuperClass, inputFormatClass, 0);
+		final Class keyClass = (Class) keyType;
 
-		return inputFormatWrapper;
-	}
+		final Type valueType  = TypeExtractor.getParameterType(inputFormatSuperClass, inputFormatClass, 1);
+		final Class valueClass = (Class) valueType;
 
-	private HadoopMapFunction getMapFunction(JobConf jobConf) {
-		HadoopMapFunction<?,?,?,?> mapFunctionWrapper = new HadoopMapFunction<WritableComparable, Writable, WritableComparable, Writable>(jobConf);
-		return mapFunctionWrapper;
-	}
-
-	private HadoopReduceFunction getReduceFunction(JobConf jobConf) {
-		HadoopReduceFunction<?,?,?,?> reduceFunctionWrapper = new HadoopReduceFunction<WritableComparable, Writable, WritableComparable, Writable>(jobConf);
-		return reduceFunctionWrapper;
-
-	}
-
-	private HadoopOutputFormat getOutputFormat(JobConf jobConf) {
-		HadoopOutputFormat<?,?> outputFormatWrapper = new HadoopOutputFormat<WritableComparable, Writable>(jobConf.getOutputFormat() ,hadoopJobConf);
-		return outputFormatWrapper;
+		return new HadoopInputFormat(inputFormat, keyClass, valueClass, jobConf);
 	}
 
 	@Override
@@ -146,8 +136,9 @@ public class StratosphereJobClient extends JobClient { //or not extend?
 		c.setOutputKeyClass(Text.class);
 		c.setOutputValueClass(LongWritable.class);
 		c.setReducerClass(LongSumReducer.class);
+		c.setCombinerClass((LongSumReducer.class));
 		c.set("mapred.textoutputformat.separator", " ");
-		StratosphereJobClient.runJob(c);
+		StratosphereHadoopJobClient.runJob(c);
 	}
 
 

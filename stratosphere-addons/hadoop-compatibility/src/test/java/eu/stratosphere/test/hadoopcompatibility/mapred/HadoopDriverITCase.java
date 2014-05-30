@@ -14,7 +14,7 @@
 
 package eu.stratosphere.test.hadoopcompatibility.mapred;
 
-import eu.stratosphere.hadoopcompatibility.mapred.StratosphereJobClient;
+import eu.stratosphere.hadoopcompatibility.mapred.StratosphereHadoopJobClient;
 import eu.stratosphere.test.testdata.WordCountData;
 import eu.stratosphere.test.util.JavaProgramTestBase;
 
@@ -37,7 +37,7 @@ public class HadoopDriverITCase extends JavaProgramTestBase {
 
 	@Override
 	protected void testProgram() throws Exception {
-		StratosphereJobClient.main(new String[]{textPath, resultPath});
+		StratosphereHadoopJobClient.main(new String[]{textPath, resultPath});
 	}
 }
 

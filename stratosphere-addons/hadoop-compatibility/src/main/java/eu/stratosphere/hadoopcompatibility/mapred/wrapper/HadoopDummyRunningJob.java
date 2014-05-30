@@ -9,7 +9,7 @@ import org.apache.hadoop.mapred.TaskCompletionEvent;
 
 import java.io.IOException;
 
-public class StratosphereRunningJob implements RunningJob {
+public class HadoopDummyRunningJob implements RunningJob {
 	@Override
 	public JobID getID() {
 		return null;
