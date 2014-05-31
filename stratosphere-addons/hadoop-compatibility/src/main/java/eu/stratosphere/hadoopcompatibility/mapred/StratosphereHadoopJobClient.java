@@ -37,6 +37,7 @@ import org.apache.hadoop.mapred.lib.LongSumReducer;
 import org.apache.hadoop.mapred.lib.TokenCountMapper;
 
 import java.io.IOException;
+import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 
 
@@ -123,7 +124,8 @@ public class StratosphereHadoopJobClient implements Configurable {
 	private HadoopInputFormat getStratosphereInputFormat(JobConf jobConf) {
 		final InputFormat inputFormat = jobConf.getInputFormat();
 		final Class inputFormatClass = inputFormat.getClass();
-		final Class inputFormatSuperClass = inputFormatClass.getSuperclass();  //TODO This only works if superclass is generic
+		System.out.println(inputFormatClass.getGenericSuperclass());
+		final Class inputFormatSuperClass = getFirstGenericHadoopInputFormatClass(inputFormatClass);
 
 		final Type keyType  = TypeExtractor.getParameterType(inputFormatSuperClass, inputFormatClass, 0);
 		final Class keyClass = (Class) keyType;
@@ -134,11 +136,24 @@ public class StratosphereHadoopJobClient implements Configurable {
 		return new HadoopInputFormat(inputFormat, keyClass, valueClass, jobConf);
 	}
 
-	private HadoopMapFunction getStratosphereMapFunction(JobConf jobConf) {
-		final Mapper mapper = InstantiationUtil.instantiate(hadoopJobConf.getMapperClass());
-		final Class mapOutputKeyClass = hadoopJobConf.getMapOutputKeyClass();
-		final Class mapOutputValueClass = hadoopJobConf.getMapOutputValueClass();
-		return new HadoopMapFunction(mapper, mapOutputKeyClass, mapOutputValueClass);
+	private Class<InputFormat<?,?>> getFirstGenericHadoopInputFormatClass(Class<InputFormat> inputFormatClass) {
+
+		Class superClass = inputFormatClass.getSuperclass();
+		Type typeOfSuperClass = inputFormatClass.getGenericSuperclass();
+		while(typeOfSuperClass != null) {
+			if (typeOfSuperClass instanceof ParameterizedType) {
+				ParameterizedType parameterizedSuperClass = (ParameterizedType) typeOfSuperClass;
+				int noOfTypeArguments = parameterizedSuperClass.getActualTypeArguments().length;
+				if (noOfTypeArguments == 2) {
+					break;
+				}
+			}
+			superClass = superClass.getSuperclass();
+			typeOfSuperClass = ((Class) typeOfSuperClass).getGenericSuperclass();
+		}
+		System.out.println(superClass);
+
+		return superClass;
 	}
 
 	@Override
