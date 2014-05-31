@@ -12,14 +12,13 @@
  * specific language governing permissions and limitations under the License.
  **********************************************************************************************************************/
 
-package eu.stratosphere.test.hadoopcompatibility.mapred;
+package eu.stratosphere.test.hadoopcompatibility.mapred.driver;
 
-import eu.stratosphere.hadoopcompatibility.mapred.StratosphereHadoopJobClient;
-import eu.stratosphere.hadoopcompatibility.mapred.example.WordCountWithDriver;
+import eu.stratosphere.hadoopcompatibility.mapred.example.driver.WordCountSameCombiner;
 import eu.stratosphere.test.testdata.WordCountData;
 import eu.stratosphere.test.util.JavaProgramTestBase;
 
-public class HadoopDriverITCase extends JavaProgramTestBase {
+public class HadoopDriverSameCombinerITCase extends JavaProgramTestBase {
 
 	protected String textPath;
 	protected String resultPath;
@@ -38,7 +37,7 @@ public class HadoopDriverITCase extends JavaProgramTestBase {
 
 	@Override
 	protected void testProgram() throws Exception {
-		WordCountWithDriver.main(new String[]{textPath, resultPath});
+		WordCountSameCombiner.main(new String[]{textPath, resultPath});
 	}
 }
 

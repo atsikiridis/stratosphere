@@ -67,42 +67,51 @@ public class StratosphereHadoopJobClient implements Configurable {
 	 * Submits a job to Stratosphere and returns a RunningJob instance which can be scheduled and monitored
 	 * without blocking by default. Use waitForCompletion() to block until the job is finished.
 	 */
+	@SuppressWarnings("unchecked")
 	public void submitJob(JobConf hadoopJobConf) throws Exception{ //TODO should return a running job...
+
+		//Setting up the execution environment
 		final ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
-		final DataSet input = env.createInput(getHadoopInputFormat(hadoopJobConf));
+
+		//setting up the inputFormat for the job
+		final DataSet input = env.createInput(getStratosphereInputFormat(hadoopJobConf));
 		env.setDegreeOfParallelism(1);
 
+		//The Mapper. TEST if no mapper then the identity mapper should work.
 		final Mapper mapper = InstantiationUtil.instantiate(hadoopJobConf.getMapperClass());
 		final Class mapOutputKeyClass = hadoopJobConf.getMapOutputKeyClass();
 		final Class mapOutputValueClass = hadoopJobConf.getMapOutputValueClass();
 		final DataSet mapped = input.flatMap(new HadoopMapFunction(mapper, mapOutputKeyClass, mapOutputValueClass));
 
+		//Partitioning  TODO Custom partitioning
 		final UnsortedGrouping grouping = mapped.groupBy(0);
 
-		final ReduceGroupOperator combineOp;
+		//Is a combiner specified in the jobConf?
 		final Class<? extends Reducer> combinerClass = hadoopJobConf.getCombinerClass();
 
-		final ReduceGroupOperator reduceOp;
+		//Is a Reducer specified ? No reducer means identity reducer.
 		final Class<? extends Reducer> reducerClass = hadoopJobConf.getReducerClass();
-		final Class outputKeyClass = hadoopJobConf.getOutputKeyClass();
-		final Class outputValueClass = hadoopJobConf.getOutputValueClass();
 		final Reducer reducer = InstantiationUtil.instantiate(reducerClass);
 
+		//The output types of the reducers.
+		final Class outputKeyClass = hadoopJobConf.getOutputKeyClass();
+		final Class outputValueClass = hadoopJobConf.getOutputValueClass();
+
+		final ReduceGroupOperator reduceOp;
 		if (combinerClass != null && combinerClass.equals(reducerClass)) {
 			reduceOp = grouping.reduceGroup(new HadoopReduceFunction(reducer, mapOutputKeyClass, mapOutputValueClass));
-			reduceOp.setCombinable(true);
+			reduceOp.setCombinable(true);  //The combiner is the same class as the reducer.
 		}
-		else if(combinerClass != null) {
+		else if(combinerClass != null) {  //We have a different combiner.
 			final Reducer combiner = InstantiationUtil.instantiate(combinerClass);
-			combineOp = grouping.reduceGroup(new HadoopReduceFunction(combiner, mapOutputKeyClass, mapOutputValueClass));
+			final ReduceGroupOperator combineOp = grouping.reduceGroup(new HadoopReduceFunction(combiner,
+					mapOutputKeyClass, mapOutputValueClass));
 			combineOp.setCombinable(true);
-			reduceOp = combineOp.reduceGroup(new HadoopReduceFunction(reducer, outputKeyClass, outputValueClass));
+			reduceOp = combineOp.groupBy(0).reduceGroup(new HadoopReduceFunction(reducer, outputKeyClass, outputValueClass));
 		}
-		else {
+		else { // No combiner.
 			reduceOp = grouping.reduceGroup(new HadoopReduceFunction(reducer, outputKeyClass, outputValueClass));
 		}
-
-
 
 		final HadoopOutputFormat outputFormat = new HadoopOutputFormat(hadoopJobConf.getOutputFormat() ,hadoopJobConf);
 		reduceOp.output(outputFormat);
@@ -111,10 +120,10 @@ public class StratosphereHadoopJobClient implements Configurable {
 	}
 
 	@SuppressWarnings("unchecked")
-	private HadoopInputFormat getHadoopInputFormat(JobConf jobConf) {
+	private HadoopInputFormat getStratosphereInputFormat(JobConf jobConf) {
 		final InputFormat inputFormat = jobConf.getInputFormat();
 		final Class inputFormatClass = inputFormat.getClass();
-		final Class inputFormatSuperClass = inputFormatClass.getSuperclass();  // What if IDENTITY super class not generic? TODO
+		final Class inputFormatSuperClass = inputFormatClass.getSuperclass();  //TODO This only works if superclass is generic
 
 		final Type keyType  = TypeExtractor.getParameterType(inputFormatSuperClass, inputFormatClass, 0);
 		final Class keyClass = (Class) keyType;
@@ -123,6 +132,13 @@ public class StratosphereHadoopJobClient implements Configurable {
 		final Class valueClass = (Class) valueType;
 
 		return new HadoopInputFormat(inputFormat, keyClass, valueClass, jobConf);
+	}
+
+	private HadoopMapFunction getStratosphereMapFunction(JobConf jobConf) {
+		final Mapper mapper = InstantiationUtil.instantiate(hadoopJobConf.getMapperClass());
+		final Class mapOutputKeyClass = hadoopJobConf.getMapOutputKeyClass();
+		final Class mapOutputValueClass = hadoopJobConf.getMapOutputValueClass();
+		return new HadoopMapFunction(mapper, mapOutputKeyClass, mapOutputValueClass);
 	}
 
 	@Override
