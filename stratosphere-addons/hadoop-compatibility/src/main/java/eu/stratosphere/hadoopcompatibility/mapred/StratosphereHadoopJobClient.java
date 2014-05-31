@@ -15,8 +15,11 @@ package eu.stratosphere.hadoopcompatibility.mapred;
 
 import eu.stratosphere.api.java.DataSet;
 import eu.stratosphere.api.java.ExecutionEnvironment;
+import eu.stratosphere.api.java.operators.Grouping;
 import eu.stratosphere.api.java.operators.ReduceGroupOperator;
+import eu.stratosphere.api.java.operators.UnsortedGrouping;
 import eu.stratosphere.api.java.typeutils.TypeExtractor;
+import eu.stratosphere.util.InstantiationUtil;
 import org.apache.hadoop.conf.Configurable;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
@@ -24,7 +27,9 @@ import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapred.InputFormat;
 import org.apache.hadoop.mapred.JobConf;
+import org.apache.hadoop.mapred.Mapper;
 import org.apache.hadoop.mapred.OutputCollector;
+import org.apache.hadoop.mapred.Reducer;
 import org.apache.hadoop.mapred.Reporter;
 import org.apache.hadoop.mapred.RunningJob;
 import org.apache.hadoop.mapred.TextOutputFormat;
@@ -67,15 +72,37 @@ public class StratosphereHadoopJobClient implements Configurable {
 		final DataSet input = env.createInput(getHadoopInputFormat(hadoopJobConf));
 		env.setDegreeOfParallelism(1);
 
-		final DataSet mapped = input.flatMap(new HadoopMapFunction(hadoopJobConf));
+		final Mapper mapper = InstantiationUtil.instantiate(hadoopJobConf.getMapperClass());
+		final Class mapOutputKeyClass = hadoopJobConf.getMapOutputKeyClass();
+		final Class mapOutputValueClass = hadoopJobConf.getMapOutputValueClass();
+		final DataSet mapped = input.flatMap(new HadoopMapFunction(mapper, mapOutputKeyClass, mapOutputValueClass));
 
-		final ReduceGroupOperator reduceOp = mapped.groupBy(0).reduceGroup(new HadoopReduceFunction(hadoopJobConf));
+		final UnsortedGrouping grouping = mapped.groupBy(0);
 
+		final ReduceGroupOperator combineOp;
+		final Class<? extends Reducer> combinerClass = hadoopJobConf.getCombinerClass();
 
-		final Class combiner = hadoopJobConf.getCombinerClass();
-		if (combiner != null) {
+		final ReduceGroupOperator reduceOp;
+		final Class<? extends Reducer> reducerClass = hadoopJobConf.getReducerClass();
+		final Class outputKeyClass = hadoopJobConf.getOutputKeyClass();
+		final Class outputValueClass = hadoopJobConf.getOutputValueClass();
+		final Reducer reducer = InstantiationUtil.instantiate(reducerClass);
+
+		if (combinerClass != null && combinerClass.equals(reducerClass)) {
+			reduceOp = grouping.reduceGroup(new HadoopReduceFunction(reducer, mapOutputKeyClass, mapOutputValueClass));
 			reduceOp.setCombinable(true);
 		}
+		else if(combinerClass != null) {
+			final Reducer combiner = InstantiationUtil.instantiate(combinerClass);
+			combineOp = grouping.reduceGroup(new HadoopReduceFunction(combiner, mapOutputKeyClass, mapOutputValueClass));
+			combineOp.setCombinable(true);
+			reduceOp = combineOp.reduceGroup(new HadoopReduceFunction(reducer, outputKeyClass, outputValueClass));
+		}
+		else {
+			reduceOp = grouping.reduceGroup(new HadoopReduceFunction(reducer, outputKeyClass, outputValueClass));
+		}
+
+
 
 		final HadoopOutputFormat outputFormat = new HadoopOutputFormat(hadoopJobConf.getOutputFormat() ,hadoopJobConf);
 		reduceOp.output(outputFormat);
@@ -87,7 +114,7 @@ public class StratosphereHadoopJobClient implements Configurable {
 	private HadoopInputFormat getHadoopInputFormat(JobConf jobConf) {
 		final InputFormat inputFormat = jobConf.getInputFormat();
 		final Class inputFormatClass = inputFormat.getClass();
-		final Class inputFormatSuperClass = inputFormatClass.getSuperclass();  // What if super class not generic? TODO
+		final Class inputFormatSuperClass = inputFormatClass.getSuperclass();  // What if IDENTITY super class not generic? TODO
 
 		final Type keyType  = TypeExtractor.getParameterType(inputFormatSuperClass, inputFormatClass, 0);
 		final Class keyClass = (Class) keyType;

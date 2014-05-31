@@ -15,11 +15,14 @@ package eu.stratosphere.hadoopcompatibility.mapred.example;
 import eu.stratosphere.api.java.operators.ReduceGroupOperator;
 import eu.stratosphere.hadoopcompatibility.mapred.HadoopMapFunction;
 import eu.stratosphere.hadoopcompatibility.mapred.HadoopReduceFunction;
+import eu.stratosphere.util.InstantiationUtil;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapred.JobConf;
+import org.apache.hadoop.mapred.Mapper;
 import org.apache.hadoop.mapred.OutputCollector;
+import org.apache.hadoop.mapred.Reducer;
 import org.apache.hadoop.mapred.Reporter;
 import org.apache.hadoop.mapred.TextInputFormat;
 import org.apache.hadoop.mapred.TextOutputFormat;
@@ -39,6 +42,7 @@ import java.io.IOException;
  */
 public class FullWordCount {
 
+	@SuppressWarnings("unchecked")
 	public static void main(String[] args) throws Exception {
 		if (args.length < 2) {
 			System.err.println("Usage: FulllWordCount <input path> <result path>");
@@ -62,22 +66,20 @@ public class FullWordCount {
 		final DataSet<Tuple2<LongWritable, Text>> text = env.createInput(hadoopInputFormat);
 
 		//Set the mapper implementation to be used.
-		hadoopJobConf.setMapperClass(TestTokenizeMap.class);
-
-		//In this job there is no need to specify out types for map output as they are the same
-		hadoopJobConf.setOutputKeyClass(Text.class);
-		hadoopJobConf.setOutputValueClass(LongWritable.class);
+		final TestTokenizeMap<LongWritable> mapper = InstantiationUtil.instantiate(TestTokenizeMap.class,
+				Mapper.class);
 
 		final DataSet<Tuple2<Text, LongWritable>> words = text.flatMap( new HadoopMapFunction<LongWritable,Text,
-				Text, LongWritable>(hadoopJobConf));
+				Text, LongWritable>(mapper, Text.class, LongWritable.class));
 
 		//Specifying the reducer.
-		hadoopJobConf.setReducerClass(LongSumReducer.class);
-		hadoopJobConf.setCombinerClass(LongSumReducer.class);  // The same reducer implementation as a local combiner.
 
+		final Reducer<Text,LongWritable, Text,LongWritable> reducer = InstantiationUtil.instantiate(LongSumReducer.class,
+				Reducer.class);
 		final ReduceGroupOperator<Tuple2<Text, LongWritable>,Tuple2<Text, LongWritable>> reduceOperator = words.
 				groupBy(0).
-				reduceGroup(new HadoopReduceFunction<Text, LongWritable,Text, LongWritable>(hadoopJobConf));
+				reduceGroup(new HadoopReduceFunction<Text, LongWritable,Text, LongWritable>(reducer, Text.class,
+						LongWritable.class));
 
 		//The reducer will be called
 		reduceOperator.setCombinable(true);

@@ -45,28 +45,33 @@ public class HadoopMapFunction<KEYIN extends WritableComparable, VALUEIN extends
 
 	private static final long serialVersionUID = 1L;
 
-	private final transient Class<KEYOUT> keyoutClass;
-	private final transient Class<VALUEOUT> valueoutClass;
+	private Class<KEYOUT> keyoutClass;
+	private Class<VALUEOUT> valueoutClass;
 
 	private JobConf jobConf;
 	private Mapper<KEYIN,VALUEIN,KEYOUT,VALUEOUT> mapper;
 	private HadoopOutputCollector<KEYOUT,VALUEOUT> outputCollector;
 	private Reporter reporter;
 
-	public HadoopMapFunction(JobConf jobConf) {
-		this(jobConf, new HadoopOutputCollector<KEYOUT,VALUEOUT>(), new HadoopDummyReporter());
+	public HadoopMapFunction(Mapper<KEYIN,VALUEIN,KEYOUT,VALUEOUT> mapper,
+							 Class<KEYOUT> keyoutClass,
+							 Class<VALUEOUT> valueoutClass) {
+		this(mapper, keyoutClass, valueoutClass, new HadoopOutputCollector<KEYOUT,VALUEOUT>(),
+				new HadoopDummyReporter());
 	}
 
 	@SuppressWarnings("unchecked")
-	public HadoopMapFunction(JobConf jobConf,
-							HadoopOutputCollector<KEYOUT,VALUEOUT> outputCollector,
-							Reporter reporter) {
-		this.jobConf = jobConf;
-		this.mapper = InstantiationUtil.instantiate(jobConf.getMapperClass());
+	public HadoopMapFunction(Mapper<KEYIN,VALUEIN,KEYOUT,VALUEOUT> mapper,
+							 Class<KEYOUT> keyoutClass,
+							 Class<VALUEOUT> valueoutClass,
+							 HadoopOutputCollector<KEYOUT,VALUEOUT> outputCollector,
+							 Reporter reporter) {
+		this.jobConf = new JobConf();
+		this.mapper = mapper;
 		this.outputCollector = outputCollector;
 		this.reporter = reporter;
-		this.keyoutClass = (Class<KEYOUT>) this.jobConf.getMapOutputKeyClass();
-		this.valueoutClass = (Class<VALUEOUT>) this.jobConf.getMapOutputValueClass();
+		this.keyoutClass = keyoutClass;
+		this.valueoutClass = valueoutClass;
 	}
 
 	@Override
@@ -89,11 +94,14 @@ public class HadoopMapFunction<KEYIN extends WritableComparable, VALUEIN extends
 	private void writeObject(ObjectOutputStream out) throws IOException {
 		HadoopConfiguration.setOutputCollectorToConf(outputCollector.getClass(), jobConf);
 		HadoopConfiguration.setReporterToConf(reporter.getClass(), jobConf);
+		jobConf.setMapperClass(mapper.getClass());
 		jobConf.write(out);
+		out.writeObject(keyoutClass);
+		out.writeObject(valueoutClass);
 	}
 
 	@SuppressWarnings("unchecked")
-	private void readObject(ObjectInputStream in) throws IOException {
+	private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
 		jobConf = new JobConf();
 		jobConf.readFields(in);
 		try {
@@ -104,5 +112,8 @@ public class HadoopMapFunction<KEYIN extends WritableComparable, VALUEIN extends
 		ReflectionUtils.setConf(mapper, jobConf);
 		outputCollector = InstantiationUtil.instantiate(HadoopConfiguration.getOutputCollectorFromConf(jobConf));
 		reporter = InstantiationUtil.instantiate(HadoopConfiguration.getReporterFromConf(jobConf));
+		mapper = InstantiationUtil.instantiate(jobConf.getMapperClass());
+		keyoutClass = (Class<KEYOUT>) in.readObject();
+		valueoutClass = (Class<VALUEOUT>) in.readObject();
 	}
 }

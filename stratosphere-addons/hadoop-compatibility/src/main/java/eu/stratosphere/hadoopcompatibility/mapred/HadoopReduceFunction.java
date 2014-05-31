@@ -47,8 +47,8 @@ public class HadoopReduceFunction<KEYIN extends WritableComparable, VALUEIN exte
 
 	private static final long serialVersionUID = 1L;
 
-	private final transient Class<KEYOUT> keyoutClass;
-	private final transient Class<VALUEOUT> valueoutClass;
+	private Class<KEYOUT> keyoutClass;
+	private Class<VALUEOUT> valueoutClass;
 
 	private JobConf jobConf;
 	private Reducer<KEYIN,VALUEIN,KEYOUT,VALUEOUT> reducer;
@@ -56,20 +56,25 @@ public class HadoopReduceFunction<KEYIN extends WritableComparable, VALUEIN exte
 	private Reporter reporter;
 	private ReducerTransformingIterator iterator;
 
-	public HadoopReduceFunction(JobConf jobConf) {
-		this(jobConf, new HadoopOutputCollector<KEYOUT,VALUEOUT>(), new HadoopDummyReporter());
+	public HadoopReduceFunction(Reducer<KEYIN,VALUEIN,KEYOUT,VALUEOUT> reducer,
+								Class<KEYOUT> keyoutClass,
+								Class<VALUEOUT> valueoutClass) {
+		this(reducer, keyoutClass, valueoutClass, new HadoopOutputCollector<KEYOUT,VALUEOUT>(),
+				new HadoopDummyReporter());
 	}
 
-	@SuppressWarnings("unchecked")
-	public HadoopReduceFunction(JobConf jobConf, HadoopOutputCollector<KEYOUT,VALUEOUT> outputCollector,
+	public HadoopReduceFunction(Reducer<KEYIN,VALUEIN,KEYOUT,VALUEOUT> reducer,
+								Class<KEYOUT> keyoutClass,
+								Class<VALUEOUT> valueoutClass,
+								HadoopOutputCollector<KEYOUT,VALUEOUT> outputCollector,
 								Reporter reporter) {
-		this.jobConf = jobConf;
-		this.reducer = InstantiationUtil.instantiate(jobConf.getReducerClass());
+		this.jobConf = new JobConf();
+		this.reducer = reducer;
 		this.outputCollector = outputCollector;
 		this.iterator = new ReducerTransformingIterator();
 		this.reporter = reporter;
-		this.keyoutClass = (Class<KEYOUT>) this.jobConf.getOutputKeyClass();
-		this.valueoutClass = (Class<VALUEOUT>) this.jobConf.getOutputValueClass();
+		this.keyoutClass = keyoutClass;
+		this.valueoutClass = valueoutClass;
 	}
 
 	/**
@@ -142,8 +147,11 @@ public class HadoopReduceFunction<KEYIN extends WritableComparable, VALUEIN exte
 	 *  @see http://docs.oracle.com/javase/7/docs/api/java/io/Serializable.html
 	 */
 	private void writeObject(ObjectOutputStream out) throws IOException {
+		jobConf.setReducerClass(reducer.getClass());
 		jobConf.write(out);
 		out.writeObject(iterator);
+		out.writeObject(keyoutClass);
+		out.writeObject(valueoutClass);
 	}
 
 	@SuppressWarnings("unchecked")
@@ -156,11 +164,14 @@ public class HadoopReduceFunction<KEYIN extends WritableComparable, VALUEIN exte
 			throw new RuntimeException("Unable to instantiate the hadoop reducer", e);
 		}
 		ReflectionUtils.setConf(reducer, jobConf);
+		reducer = InstantiationUtil.instantiate(jobConf.getReducerClass());
 		outputCollector = (HadoopOutputCollector) InstantiationUtil.instantiate(
 				HadoopConfiguration.getOutputCollectorFromConf(jobConf));
 		reporter = InstantiationUtil.instantiate(
 				HadoopConfiguration.getReporterFromConf(jobConf));
 		iterator = (ReducerTransformingIterator) in.readObject();
+		keyoutClass = (Class<KEYOUT>) in.readObject();
+		valueoutClass = (Class<VALUEOUT>) in.readObject();
 	}
 
 }
