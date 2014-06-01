@@ -25,6 +25,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
+import org.apache.hadoop.io.WritableComparable;
 import org.apache.hadoop.mapred.InputFormat;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.Mapper;
@@ -114,6 +115,7 @@ public class StratosphereHadoopJobClient implements Configurable {
 			reduceOp = grouping.reduceGroup(new HadoopReduceFunction(reducer, outputKeyClass, outputValueClass));
 		}
 
+		//Wrapping the output format.
 		final HadoopOutputFormat outputFormat = new HadoopOutputFormat(hadoopJobConf.getOutputFormat() ,hadoopJobConf);
 		reduceOp.output(outputFormat);
 
@@ -124,8 +126,7 @@ public class StratosphereHadoopJobClient implements Configurable {
 	private HadoopInputFormat getStratosphereInputFormat(JobConf jobConf) {
 		final InputFormat inputFormat = jobConf.getInputFormat();
 		final Class inputFormatClass = inputFormat.getClass();
-		System.out.println(inputFormatClass.getGenericSuperclass());
-		final Class inputFormatSuperClass = getFirstGenericHadoopInputFormatClass(inputFormatClass);
+		final Class inputFormatSuperClass = getInputFormatBaseClass(inputFormatClass);
 
 		final Type keyType  = TypeExtractor.getParameterType(inputFormatSuperClass, inputFormatClass, 0);
 		final Class keyClass = (Class) keyType;
@@ -136,24 +137,24 @@ public class StratosphereHadoopJobClient implements Configurable {
 		return new HadoopInputFormat(inputFormat, keyClass, valueClass, jobConf);
 	}
 
-	private Class<InputFormat<?,?>> getFirstGenericHadoopInputFormatClass(Class<InputFormat> inputFormatClass) {
+	private Class<InputFormat<?,?>> getInputFormatBaseClass(Class<InputFormat> inputFormatClass) {
 
-		Class superClass = inputFormatClass.getSuperclass();
-		Type typeOfSuperClass = inputFormatClass.getGenericSuperclass();
-		while(typeOfSuperClass != null) {
-			if (typeOfSuperClass instanceof ParameterizedType) {
-				ParameterizedType parameterizedSuperClass = (ParameterizedType) typeOfSuperClass;
-				int noOfTypeArguments = parameterizedSuperClass.getActualTypeArguments().length;
-				if (noOfTypeArguments == 2) {
+		Class sc = inputFormatClass.getSuperclass();
+		Type scType = inputFormatClass.getGenericSuperclass();
+		while(scType != null) {
+			if (scType instanceof ParameterizedType && !(InputFormat.class.isAssignableFrom(sc.getSuperclass()))) {
+				final int noOfTypes =  ((ParameterizedType) scType).getActualTypeArguments().length;
+				if (noOfTypes >=2) {  //needs improvement TODO
 					break;
 				}
 			}
-			superClass = superClass.getSuperclass();
-			typeOfSuperClass = ((Class) typeOfSuperClass).getGenericSuperclass();
+			sc = sc.getSuperclass();
+			scType = ((Class) scType).getGenericSuperclass();
 		}
-		System.out.println(superClass);
+		if (sc == null) {
 
-		return superClass;
+		}
+		return sc;
 	}
 
 	@Override
