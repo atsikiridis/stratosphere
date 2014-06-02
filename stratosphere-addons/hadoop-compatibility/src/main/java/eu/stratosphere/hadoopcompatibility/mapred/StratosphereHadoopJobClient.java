@@ -15,27 +15,19 @@ package eu.stratosphere.hadoopcompatibility.mapred;
 
 import eu.stratosphere.api.java.DataSet;
 import eu.stratosphere.api.java.ExecutionEnvironment;
-import eu.stratosphere.api.java.operators.Grouping;
 import eu.stratosphere.api.java.operators.ReduceGroupOperator;
 import eu.stratosphere.api.java.operators.UnsortedGrouping;
-import eu.stratosphere.api.java.typeutils.TypeExtractor;
+import eu.stratosphere.hadoopcompatibility.mapred.wrapper.HadoopDummyReporter;
+import eu.stratosphere.hadoopcompatibility.mapred.wrapper.StratosphereRunningJob;
 import eu.stratosphere.util.InstantiationUtil;
-import org.apache.hadoop.conf.Configurable;
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.io.LongWritable;
-import org.apache.hadoop.io.Text;
-import org.apache.hadoop.io.WritableComparable;
 import org.apache.hadoop.mapred.InputFormat;
+import org.apache.hadoop.mapred.InputSplit;
+import org.apache.hadoop.mapred.JobClient;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.Mapper;
-import org.apache.hadoop.mapred.OutputCollector;
 import org.apache.hadoop.mapred.Reducer;
 import org.apache.hadoop.mapred.Reporter;
 import org.apache.hadoop.mapred.RunningJob;
-import org.apache.hadoop.mapred.TextOutputFormat;
-import org.apache.hadoop.mapred.lib.LongSumReducer;
-import org.apache.hadoop.mapred.lib.TokenCountMapper;
 
 import java.io.IOException;
 import java.lang.reflect.ParameterizedType;
@@ -45,7 +37,7 @@ import java.lang.reflect.Type;
 /**
  * The user's view of Hadoop Job executed on a Stratosphere cluster.
  */
-public class StratosphereHadoopJobClient implements Configurable {
+public class StratosphereHadoopJobClient  extends JobClient {
 
 	private JobConf  hadoopJobConf;
 
@@ -60,9 +52,9 @@ public class StratosphereHadoopJobClient implements Configurable {
 	/**
 	 * Submits a Hadoop job to Stratoshere (as described by the JobConf and returns after the job has been completed.
 	 */
-	public static void runJob(JobConf hadoopJobConf) throws Exception{
+	public static RunningJob runJob(JobConf hadoopJobConf) throws IOException{
 		final StratosphereHadoopJobClient jobClient = new StratosphereHadoopJobClient(hadoopJobConf);
-		jobClient.submitJob(hadoopJobConf);
+		return jobClient.submitJob(hadoopJobConf);
 	}
 
 	/**
@@ -70,7 +62,7 @@ public class StratosphereHadoopJobClient implements Configurable {
 	 * without blocking by default. Use waitForCompletion() to block until the job is finished.
 	 */
 	@SuppressWarnings("unchecked")
-	public void submitJob(JobConf hadoopJobConf) throws Exception{ //TODO should return a running job...
+	public RunningJob submitJob(JobConf hadoopJobConf) throws IOException{ //TODO should return a running job...
 
 		//Setting up the execution environment
 		final ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
@@ -109,7 +101,9 @@ public class StratosphereHadoopJobClient implements Configurable {
 			final ReduceGroupOperator combineOp = grouping.reduceGroup(new HadoopReduceFunction(combiner,
 					mapOutputKeyClass, mapOutputValueClass));
 			combineOp.setCombinable(true);
-			reduceOp = combineOp.groupBy(0).reduceGroup(new HadoopReduceFunction(reducer, outputKeyClass, outputValueClass));
+			final HadoopReduceFunction reduceFunction = new HadoopReduceFunction(reducer, outputKeyClass,
+					outputValueClass);
+			reduceOp = combineOp.groupBy(0).reduceGroup(reduceFunction);
 		}
 		else { // No combiner.
 			reduceOp = grouping.reduceGroup(new HadoopReduceFunction(reducer, outputKeyClass, outputValueClass));
@@ -119,24 +113,31 @@ public class StratosphereHadoopJobClient implements Configurable {
 		final HadoopOutputFormat outputFormat = new HadoopOutputFormat(hadoopJobConf.getOutputFormat() ,hadoopJobConf);
 		reduceOp.output(outputFormat);
 
-		env.execute(hadoopJobConf.getJobName());
+		return new StratosphereRunningJob(hadoopJobConf, env);
 	}
 
 	@SuppressWarnings("unchecked")
-	private HadoopInputFormat getStratosphereInputFormat(JobConf jobConf) {
+	private HadoopInputFormat getStratosphereInputFormat(JobConf jobConf) throws IOException{
 		final InputFormat inputFormat = jobConf.getInputFormat();
-		final Class inputFormatClass = inputFormat.getClass();
-		final Class inputFormatSuperClass = getInputFormatBaseClass(inputFormatClass);
-
-		final Type keyType  = TypeExtractor.getParameterType(inputFormatSuperClass, inputFormatClass, 0);
-		final Class keyClass = (Class) keyType;
-
-		final Type valueType  = TypeExtractor.getParameterType(inputFormatSuperClass, inputFormatClass, 1);
-		final Class valueClass = (Class) valueType;
-
-		return new HadoopInputFormat(inputFormat, keyClass, valueClass, jobConf);
+		final Class[] inputFormatClasses = getInputFormatClasses(inputFormat, jobConf);
+		return new HadoopInputFormat(inputFormat, inputFormatClasses[0], inputFormatClasses[1], jobConf);
 	}
 
+	/**
+	 * Better... Still not always.
+	 */
+	private Class[] getInputFormatClasses(InputFormat inputFormat, JobConf jobConf) throws IOException{
+		final Class[] inputFormatClasses = new Class[2];
+		final InputSplit firstSplit = inputFormat.getSplits(jobConf, 0)[0];
+		final Reporter reporter = new HadoopDummyReporter();
+		inputFormatClasses[0] = inputFormat.getRecordReader(firstSplit, jobConf, reporter).createKey().getClass();
+		inputFormatClasses[1] = inputFormat.getRecordReader(firstSplit, jobConf, reporter).createValue().getClass();
+		return inputFormatClasses;
+	}
+
+	/**
+	 * Alternative...
+	 */
 	private Class<InputFormat<?,?>> getInputFormatBaseClass(Class<InputFormat> inputFormatClass) {
 
 		Class sc = inputFormatClass.getSuperclass();
@@ -155,15 +156,5 @@ public class StratosphereHadoopJobClient implements Configurable {
 
 		}
 		return sc;
-	}
-
-	@Override
-	public void setConf(Configuration configuration) {
-		this.hadoopJobConf = (JobConf) configuration;
-	}
-
-	@Override
-	public Configuration getConf() {
-		return this.hadoopJobConf;
 	}
 }
