@@ -16,6 +16,7 @@ package eu.stratosphere.hadoopcompatibility.mapred;
 import com.sun.org.apache.commons.logging.Log;
 import com.sun.org.apache.commons.logging.LogFactory;
 import eu.stratosphere.api.common.JobExecutionResult;
+import eu.stratosphere.api.common.Plan;
 import eu.stratosphere.api.java.DataSet;
 import eu.stratosphere.api.java.ExecutionEnvironment;
 import eu.stratosphere.api.java.operators.ReduceGroupOperator;
@@ -48,6 +49,8 @@ public class StratosphereHadoopJobClient  extends JobClient {
 	private static final long MAX_JOBPROFILE_AGE = 1000 * 2;
 	
 	private final ExecutionEnvironment environment;
+
+	private JobExecutionResult jobExecutionResult;
 	private Configuration hadoopConf;
 
 
@@ -124,9 +127,12 @@ public class StratosphereHadoopJobClient  extends JobClient {
 		final HadoopOutputFormat outputFormat = new HadoopOutputFormat(hadoopJobConf.getOutputFormat() ,hadoopJobConf);
 		reduceOp.output(outputFormat);
 
-		JobExecutionResult jobExecutionResult;
+		final Plan p = environment.createProgramPlan(hadoopJobConf.getJobName());
+		p.setDefaultParallelism(environment.getDegreeOfParallelism());
+		environment.registerCachedFilesWithPlan(p);
+
 		try {
-			jobExecutionResult = environment.execute(hadoopJobConf.getJobName()); //TODO analyze this
+			//jobExecutionResult = environment.execute(hadoopJobConf.getJobName()); //TODO analyze this
 		}
 		catch (Exception e) {
 			throw new IOException("An error has occured " + e);
@@ -166,9 +172,8 @@ public class StratosphereHadoopJobClient  extends JobClient {
 
 
 	/**
-	 * A stratosphere job that is currently running. Based loosely on hadoop's JobClient.NetworkeJob
+	 * A stratosphere job that is currently running. Based loosely on Hadoop's JobClient.NetworkedJob class.
 	 */
-
 	class StratosphereRunningJob implements RunningJob {
 
 		private final int DEFAULT_COMPLETION_POLL_INTERVAL = 5000;
@@ -312,13 +317,13 @@ public class StratosphereHadoopJobClient  extends JobClient {
 
 		@Override
 		public Counters getCounters() throws IOException {
-			return null;
-		}  //TODO Return accumulators!!! jobExecutionResult
+			return jobExecutionResult.getAllAccumulatorResults();
+		}  //TODO Map accumulators to counters
 
 		@Override
 		public String getFailureInfo() throws IOException {
 			return null;
-		}
+		}  //TODO
 
 		@Override
 		public String[] getTaskDiagnostics(final TaskAttemptID taskAttemptID) throws IOException {
