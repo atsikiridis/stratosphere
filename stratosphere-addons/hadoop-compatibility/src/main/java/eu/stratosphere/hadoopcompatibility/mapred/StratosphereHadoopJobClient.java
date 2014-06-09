@@ -13,40 +13,56 @@
 
 package eu.stratosphere.hadoopcompatibility.mapred;
 
+import com.sun.org.apache.commons.logging.Log;
+import com.sun.org.apache.commons.logging.LogFactory;
+import eu.stratosphere.api.common.JobExecutionResult;
 import eu.stratosphere.api.java.DataSet;
 import eu.stratosphere.api.java.ExecutionEnvironment;
 import eu.stratosphere.api.java.operators.ReduceGroupOperator;
 import eu.stratosphere.api.java.operators.UnsortedGrouping;
 import eu.stratosphere.hadoopcompatibility.mapred.wrapper.HadoopDummyReporter;
-import eu.stratosphere.hadoopcompatibility.mapred.wrapper.StratosphereRunningJob;
 import eu.stratosphere.util.InstantiationUtil;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.mapred.Counters;
 import org.apache.hadoop.mapred.InputFormat;
 import org.apache.hadoop.mapred.InputSplit;
 import org.apache.hadoop.mapred.JobClient;
 import org.apache.hadoop.mapred.JobConf;
+import org.apache.hadoop.mapred.JobID;
+import org.apache.hadoop.mapred.JobPriority;
+import org.apache.hadoop.mapred.JobStatus;
 import org.apache.hadoop.mapred.Mapper;
 import org.apache.hadoop.mapred.Reducer;
 import org.apache.hadoop.mapred.Reporter;
 import org.apache.hadoop.mapred.RunningJob;
+import org.apache.hadoop.mapred.TaskAttemptID;
+import org.apache.hadoop.mapred.TaskCompletionEvent;
 
 import java.io.IOException;
-import java.lang.reflect.ParameterizedType;
-import java.lang.reflect.Type;
-
-
 /**
  * The user's view of Hadoop Job executed on a Stratosphere cluster.
  */
 public class StratosphereHadoopJobClient  extends JobClient {
 
-	private JobConf  hadoopJobConf;
+	private static final Log LOG = LogFactory.getLog(StratosphereHadoopJobClient.class);
+	private static final long MAX_JOBPROFILE_AGE = 1000 * 2;
+	
+	private final ExecutionEnvironment environment;
+	private Configuration hadoopConf;
+
 
 	public StratosphereHadoopJobClient() {
-		this.hadoopJobConf = new JobConf();
+		this(new Configuration(), ExecutionEnvironment.getExecutionEnvironment());
 	}
 
-	public StratosphereHadoopJobClient(JobConf hadoopJobConf) {
-		this.hadoopJobConf = hadoopJobConf;
+	public StratosphereHadoopJobClient(Configuration hadoopConf) {
+		this(hadoopConf, ExecutionEnvironment.getExecutionEnvironment());
+	}
+
+	public StratosphereHadoopJobClient(Configuration hadoopConf, ExecutionEnvironment environment) {
+		this.hadoopConf = hadoopConf;
+		this.environment = environment;
+		this.environment.setDegreeOfParallelism(1); //TODO make configurable.
 	}
 
 	/**
@@ -64,14 +80,9 @@ public class StratosphereHadoopJobClient  extends JobClient {
 	@SuppressWarnings("unchecked")
 	public RunningJob submitJob(JobConf hadoopJobConf) throws IOException{ //TODO should return a running job...
 
-		//Setting up the execution environment
-		final ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
-
 		//setting up the inputFormat for the job
-		final DataSet input = env.createInput(getStratosphereInputFormat(hadoopJobConf));
-		env.setDegreeOfParallelism(1);
+		final DataSet input = environment.createInput(getStratosphereInputFormat(hadoopJobConf));
 
-		//The Mapper. TEST if no mapper then the identity mapper should work.
 		final Mapper mapper = InstantiationUtil.instantiate(hadoopJobConf.getMapperClass());
 		final Class mapOutputKeyClass = hadoopJobConf.getMapOutputKeyClass();
 		final Class mapOutputValueClass = hadoopJobConf.getMapOutputValueClass();
@@ -113,7 +124,15 @@ public class StratosphereHadoopJobClient  extends JobClient {
 		final HadoopOutputFormat outputFormat = new HadoopOutputFormat(hadoopJobConf.getOutputFormat() ,hadoopJobConf);
 		reduceOp.output(outputFormat);
 
-		return new StratosphereRunningJob(hadoopJobConf, env);
+		JobExecutionResult jobExecutionResult;
+		try {
+			jobExecutionResult = environment.execute(hadoopJobConf.getJobName()); //TODO analyze this
+		}
+		catch (Exception e) {
+			throw new IOException("An error has occured " + e);
+		}
+		eu.stratosphere.nephele.jobgraph.JobStatus
+		return new StratosphereRunningJob();  //  TODO we need a JobStatus!
 	}
 
 	@SuppressWarnings("unchecked")
@@ -134,27 +153,187 @@ public class StratosphereHadoopJobClient  extends JobClient {
 		inputFormatClasses[1] = inputFormat.getRecordReader(firstSplit, jobConf, reporter).createValue().getClass();
 		return inputFormatClasses;
 	}
+	
+	@Override
+	public void setConf(Configuration conf) {
+		this.hadoopConf = conf;
+	}
+	
+	@Override
+	public Configuration getConf() {
+		return this.hadoopConf;
+	}
+
 
 	/**
-	 * Alternative...
+	 * A stratosphere job that is currently running. Based loosely on hadoop's JobClient.NetworkeJob
 	 */
-	private Class<InputFormat<?,?>> getInputFormatBaseClass(Class<InputFormat> inputFormatClass) {
 
-		Class sc = inputFormatClass.getSuperclass();
-		Type scType = inputFormatClass.getGenericSuperclass();
-		while(scType != null) {
-			if (scType instanceof ParameterizedType && !(InputFormat.class.isAssignableFrom(sc.getSuperclass()))) {
-				final int noOfTypes =  ((ParameterizedType) scType).getActualTypeArguments().length;
-				if (noOfTypes >=2) {  //needs improvement TODO
-					break;
+	class StratosphereRunningJob implements RunningJob {
+
+		private final int DEFAULT_COMPLETION_POLL_INTERVAL = 5000;
+		private final String COMPLETION_POLL_INTERVAL_KEY = "jobclient.completion.poll.inteval";
+
+		private JobConf jobConf;
+		private ExecutionEnvironment environment;
+		private JobStatus status;
+
+		private int completionPollIntervalMillis;
+		private long statustime;
+		private JobExecutionResult jobExecutionResult;
+
+		public StratosphereRunningJob(JobStatus status) {
+
+			this.status = status;
+			this.environment =StratosphereHadoopJobClient.this.environment;
+			this.jobConf = (JobConf) StratosphereHadoopJobClient.this.getConf();
+			this.statustime = System.currentTimeMillis();
+
+			this.completionPollIntervalMillis = this.jobConf.getInt(COMPLETION_POLL_INTERVAL_KEY,
+					DEFAULT_COMPLETION_POLL_INTERVAL);
+			if (this.completionPollIntervalMillis < 1) {
+				LOG.warn(COMPLETION_POLL_INTERVAL_KEY + " has been set to an invalid value; " +
+						"replacing with  " + DEFAULT_COMPLETION_POLL_INTERVAL);
+				this.completionPollIntervalMillis = this.DEFAULT_COMPLETION_POLL_INTERVAL;
+			}
+		}
+
+		@Override
+		public JobID getID() {
+			return  JobID.forName(environment.getIdString());
+		}
+
+		@Override
+		public String getJobID() {
+			return getID().toString();
+		}
+
+		@Override
+		public String getJobName() {
+			return jobConf.getJobName();
+		}
+
+		@Override
+		public String getJobFile() {
+			return jobConf.getJar();
+		}  // TODO this needs work.
+
+		@Override
+		public String getTrackingURL() {
+			return null;
+		}  // TODO as well. profile!
+
+		@Override
+		public float mapProgress() throws IOException {
+			ensureFreshStatus();
+			return status.mapProgress();
+		}
+
+		@Override
+		public float reduceProgress() throws IOException {
+			ensureFreshStatus();
+			return status.reduceProgress();
+		}
+
+		@Override
+		public float cleanupProgress() throws IOException {
+			ensureFreshStatus();
+			return status.cleanupProgress();
+		}
+
+		@Override
+		public float setupProgress() throws IOException {
+			ensureFreshStatus();
+			return status.setupProgress();
+		}
+
+		@Override
+		public boolean isComplete() throws IOException {
+			updateStatus();
+			final int state = getJobState();
+			return (state == JobStatus.SUCCEEDED ||
+					state == JobStatus.FAILED ||
+					state == JobStatus.KILLED);
+		}
+
+		@Override
+		public boolean isSuccessful() throws IOException {
+			updateStatus();
+			return getJobState() == JobStatus.SUCCEEDED;
+		}
+
+		@Override
+		public void waitForCompletion() throws IOException {
+			while (!isComplete()) {
+				try {
+					Thread.sleep(this.completionPollIntervalMillis);
+				} catch (InterruptedException ie) {
 				}
 			}
-			sc = sc.getSuperclass();
-			scType = ((Class) scType).getGenericSuperclass();
 		}
-		if (sc == null) {
+
+		@Override
+		public int getJobState() throws IOException {
+			updateStatus();
+			return getJobStatus().getRunState();
+		}
+
+		@Override
+		public JobStatus getJobStatus() throws IOException {
+			return new JobStatus(getID(), setupProgress(), mapProgress(), reduceProgress(), cleanupProgress(),
+					getJobState(), jobConf.getJobPriority());
+		}
+
+		@Override
+		public void killJob() throws IOException {  //TODO Access Nephele.
 
 		}
-		return sc;
+
+		@Override
+		public void setJobPriority(final String s) throws IOException {
+			getJobStatus().setJobPriority(JobPriority.valueOf(s));
+		}
+
+		@Override
+		public TaskCompletionEvent[] getTaskCompletionEvents(final int i) throws IOException {
+			return TaskCompletionEvent.EMPTY_ARRAY;
+		} // TODO must understand this better.
+
+		@Override
+		public void killTask(final TaskAttemptID taskAttemptID, final boolean b) throws IOException {
+			//TODO Nephele!!! access jobmanager
+		}
+
+		@Override
+		public void killTask(final String s, final boolean b) throws IOException {
+			TaskAttemptID taskAttemptID = TaskAttemptID.forName(s);
+			killTask(taskAttemptID, b);
+		}
+
+		@Override
+		public Counters getCounters() throws IOException {
+			return null;
+		}  //TODO Return accumulators!!! jobExecutionResult
+
+		@Override
+		public String getFailureInfo() throws IOException {
+			return null;
+		}
+
+		@Override
+		public String[] getTaskDiagnostics(final TaskAttemptID taskAttemptID) throws IOException {
+			return new String[0];
+		}
+
+		synchronized void updateStatus() throws IOException {
+			//this.status = jobSubmitClient.getJobStatus(profile.getJobID());   //TODO JobManager
+			this.statustime = System.currentTimeMillis();
+		}
+
+		synchronized void ensureFreshStatus() throws IOException {
+			if (System.currentTimeMillis() - statustime > MAX_JOBPROFILE_AGE) {
+				updateStatus();
+			}
+		}
 	}
 }

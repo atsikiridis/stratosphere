@@ -54,18 +54,18 @@ public class HadoopMapFunction<KEYIN extends WritableComparable, VALUEIN extends
 	private Reporter reporter;
 
 	public HadoopMapFunction(Mapper<KEYIN,VALUEIN,KEYOUT,VALUEOUT> mapper,
-							 Class<KEYOUT> keyoutClass,
-							 Class<VALUEOUT> valueoutClass) {
+							Class<KEYOUT> keyoutClass,
+							Class<VALUEOUT> valueoutClass) {
 		this(mapper, keyoutClass, valueoutClass, new HadoopOutputCollector<KEYOUT,VALUEOUT>(),
 				new HadoopDummyReporter());
 	}
 
 	@SuppressWarnings("unchecked")
 	public HadoopMapFunction(Mapper<KEYIN,VALUEIN,KEYOUT,VALUEOUT> mapper,
-							 Class<KEYOUT> keyoutClass,
-							 Class<VALUEOUT> valueoutClass,
-							 HadoopOutputCollector<KEYOUT,VALUEOUT> outputCollector,
-							 Reporter reporter) {
+							Class<KEYOUT> keyoutClass,
+							Class<VALUEOUT> valueoutClass,
+							HadoopOutputCollector<KEYOUT,VALUEOUT> outputCollector,
+							Reporter reporter) {
 		this.jobConf = new JobConf();
 		this.mapper = mapper;
 		this.outputCollector = outputCollector;
