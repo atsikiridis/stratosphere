@@ -19,13 +19,14 @@ import eu.stratosphere.api.java.typeutils.ResultTypeQueryable;
 import eu.stratosphere.api.java.typeutils.TupleTypeInfo;
 import eu.stratosphere.api.java.typeutils.WritableTypeInfo;
 import eu.stratosphere.hadoopcompatibility.mapred.utils.HadoopConfiguration;
-import eu.stratosphere.hadoopcompatibility.mapred.wrapper.HadoopDummyReporter;
+import eu.stratosphere.hadoopcompatibility.mapred.wrapper.HadoopReporter;
 import eu.stratosphere.hadoopcompatibility.mapred.wrapper.HadoopOutputCollector;
 import eu.stratosphere.types.TypeInformation;
 import eu.stratosphere.util.Collector;
 import eu.stratosphere.util.InstantiationUtil;
 import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.io.WritableComparable;
+import org.apache.hadoop.mapred.InputSplit;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.Mapper;
 import org.apache.hadoop.mapred.Reporter;
@@ -51,23 +52,27 @@ public class HadoopMapFunction<KEYIN extends WritableComparable, VALUEIN extends
 	private JobConf jobConf;
 	private Mapper<KEYIN,VALUEIN,KEYOUT,VALUEOUT> mapper;
 	private HadoopOutputCollector<KEYOUT,VALUEOUT> outputCollector;
-	private Reporter reporter;
+	private HadoopReporter reporter;
+	private InputSplit[] inputSplits;
 
 	public HadoopMapFunction(Mapper<KEYIN,VALUEIN,KEYOUT,VALUEOUT> mapper,
 							Class<KEYOUT> keyoutClass,
-							Class<VALUEOUT> valueoutClass) {
-		this(mapper, keyoutClass, valueoutClass, new HadoopOutputCollector<KEYOUT,VALUEOUT>(),
-				new HadoopDummyReporter());
+							Class<VALUEOUT> valueoutClass,
+							InputSplit[] inputSplits) {
+		this(mapper, keyoutClass, valueoutClass, inputSplits, new HadoopOutputCollector<KEYOUT,VALUEOUT>(),
+				new HadoopReporter());
 	}
 
 	@SuppressWarnings("unchecked")
 	public HadoopMapFunction(Mapper<KEYIN,VALUEIN,KEYOUT,VALUEOUT> mapper,
 							Class<KEYOUT> keyoutClass,
 							Class<VALUEOUT> valueoutClass,
+							InputSplit[] inputSplits,
 							HadoopOutputCollector<KEYOUT,VALUEOUT> outputCollector,
-							Reporter reporter) {
+							HadoopReporter reporter) {
 		this.jobConf = new JobConf();
 		this.mapper = mapper;
+		this.inputSplits = inputSplits;
 		this.outputCollector = outputCollector;
 		this.reporter = reporter;
 		this.keyoutClass = keyoutClass;
@@ -77,6 +82,7 @@ public class HadoopMapFunction<KEYIN extends WritableComparable, VALUEIN extends
 	@Override
 	public void flatMap(Tuple2<KEYIN,VALUEIN> value, Collector<Tuple2<KEYOUT,VALUEOUT>> out) throws Exception {
 		outputCollector.set(out);
+		reporter.setInputSplit(inputSplits[0]);  //TODO Have a counter.
 		mapper.map(value.f0, value.f1, outputCollector, reporter);
 	}
 
@@ -111,7 +117,7 @@ public class HadoopMapFunction<KEYIN extends WritableComparable, VALUEIN extends
 		}
 		ReflectionUtils.setConf(mapper, jobConf);
 		outputCollector = InstantiationUtil.instantiate(HadoopConfiguration.getOutputCollectorFromConf(jobConf));
-		reporter = InstantiationUtil.instantiate(HadoopConfiguration.getReporterFromConf(jobConf));
+		reporter = (HadoopReporter) InstantiationUtil.instantiate(HadoopConfiguration.getReporterFromConf(jobConf));
 		mapper = InstantiationUtil.instantiate(jobConf.getMapperClass());
 		keyoutClass = (Class<KEYOUT>) in.readObject();
 		valueoutClass = (Class<VALUEOUT>) in.readObject();

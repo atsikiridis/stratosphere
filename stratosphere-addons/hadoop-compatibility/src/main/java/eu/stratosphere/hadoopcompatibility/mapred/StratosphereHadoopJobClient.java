@@ -21,7 +21,7 @@ import eu.stratosphere.api.java.DataSet;
 import eu.stratosphere.api.java.ExecutionEnvironment;
 import eu.stratosphere.api.java.operators.ReduceGroupOperator;
 import eu.stratosphere.api.java.operators.UnsortedGrouping;
-import eu.stratosphere.hadoopcompatibility.mapred.wrapper.HadoopDummyReporter;
+import eu.stratosphere.hadoopcompatibility.mapred.wrapper.HadoopReporter;
 import eu.stratosphere.util.InstantiationUtil;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.mapred.Counters;
@@ -81,7 +81,7 @@ public class StratosphereHadoopJobClient  extends JobClient {
 	 * without blocking by default. Use waitForCompletion() to block until the job is finished.
 	 */
 	@SuppressWarnings("unchecked")
-	public RunningJob submitJob(JobConf hadoopJobConf) throws IOException{ //TODO should return a running job...
+	public RunningJob submitJob(JobConf hadoopJobConf) throws IOException{
 
 		//setting up the inputFormat for the job
 		final DataSet input = environment.createInput(getStratosphereInputFormat(hadoopJobConf));
@@ -127,12 +127,12 @@ public class StratosphereHadoopJobClient  extends JobClient {
 		final HadoopOutputFormat outputFormat = new HadoopOutputFormat(hadoopJobConf.getOutputFormat() ,hadoopJobConf);
 		reduceOp.output(outputFormat);
 
-		final Plan p = environment.createProgramPlan(hadoopJobConf.getJobName());
-		p.setDefaultParallelism(environment.getDegreeOfParallelism());
-		environment.registerCachedFilesWithPlan(p);
+		//final Plan p = environment.createProgramPlan(hadoopJobConf.getJobName());
+		//p.setDefaultParallelism(environment.getDegreeOfParallelism());
+		//environment.registerCachedFilesWithPlan(p);
 
 		try {
-			//jobExecutionResult = environment.execute(hadoopJobConf.getJobName()); //TODO analyze this
+			jobExecutionResult = environment.execute(hadoopJobConf.getJobName()); //TODO analyze this
 		}
 		catch (Exception e) {
 			throw new IOException("An error has occured " + e);
@@ -154,7 +154,7 @@ public class StratosphereHadoopJobClient  extends JobClient {
 	private Class[] getInputFormatClasses(InputFormat inputFormat, JobConf jobConf) throws IOException{
 		final Class[] inputFormatClasses = new Class[2];
 		final InputSplit firstSplit = inputFormat.getSplits(jobConf, 0)[0];
-		final Reporter reporter = new HadoopDummyReporter();
+		final Reporter reporter = new HadoopReporter();
 		inputFormatClasses[0] = inputFormat.getRecordReader(firstSplit, jobConf, reporter).createKey().getClass();
 		inputFormatClasses[1] = inputFormat.getRecordReader(firstSplit, jobConf, reporter).createValue().getClass();
 		return inputFormatClasses;
@@ -290,7 +290,7 @@ public class StratosphereHadoopJobClient  extends JobClient {
 		}
 
 		@Override
-		public void killJob() throws IOException {  //TODO Access Nephele.
+		public void killJob() throws IOException {  //TODO Access Nephele. works in HadoopEnvironment.
 
 		}
 
@@ -306,7 +306,7 @@ public class StratosphereHadoopJobClient  extends JobClient {
 
 		@Override
 		public void killTask(final TaskAttemptID taskAttemptID, final boolean b) throws IOException {
-			//TODO Nephele!!! access jobmanager
+			//TODO Nephele!!! access jobclient
 		}
 
 		@Override
@@ -318,7 +318,7 @@ public class StratosphereHadoopJobClient  extends JobClient {
 		@Override
 		public Counters getCounters() throws IOException {
 			return jobExecutionResult.getAllAccumulatorResults();
-		}  //TODO Map accumulators to counters
+		}  //TODO Map accumulators to counters, almost there.
 
 		@Override
 		public String getFailureInfo() throws IOException {

@@ -1,5 +1,5 @@
 /***********************************************************************************************************************
- * Copyright (C) 2010-2013 by the Stratosphere project (http://stratosphere.eu)
+ * Copyright (C) 2010-2014 by the Stratosphere project (http://stratosphere.eu)
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -13,53 +13,15 @@
 
 package eu.stratosphere.hadoopcompatibility.mapred.wrapper;
 
-import org.apache.hadoop.mapred.Counters.Counter;
-import org.apache.hadoop.mapred.InputSplit;
-import org.apache.hadoop.mapred.Reporter;
+import org.apache.hadoop.util.Progressable;
 
 /**
- * This is a dummy progress monitor / reporter
+ * This is a dummy progress
  *
  */
-public class HadoopDummyReporter implements Reporter {
-
+public class HadoopProgressable implements Progressable {
 	@Override
 	public void progress() {
-	}
-
-	@Override
-	public void setStatus(String status) {
 
 	}
-
-	@Override
-	public Counter getCounter(Enum<?> name) {
-		return null;
-	}
-
-	@Override
-	public Counter getCounter(String group, String name) {
-		return null;
-	}
-
-	@Override
-	public void incrCounter(Enum<?> key, long amount) {
-
-	}
-
-	@Override
-	public void incrCounter(String group, String counter, long amount) {
-
-	}
-
-	@Override
-	public InputSplit getInputSplit() throws UnsupportedOperationException {
-		return null;
-	}
-
-	@Override
-	public float getProgress() {
-		return 0;
-	}
-
 }

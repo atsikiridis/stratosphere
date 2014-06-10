@@ -15,7 +15,7 @@ package eu.stratosphere.hadoopcompatibility.mapred.utils;
 
 import java.util.Map;
 
-import eu.stratosphere.hadoopcompatibility.mapred.wrapper.HadoopDummyReporter;
+import eu.stratosphere.hadoopcompatibility.mapred.wrapper.HadoopReporter;
 import eu.stratosphere.hadoopcompatibility.mapred.wrapper.HadoopOutputCollector;
 import org.apache.hadoop.mapred.JobConf;
 
@@ -54,6 +54,6 @@ public class HadoopConfiguration {
 	}
 
 	public static Class<? extends Reporter> getReporterFromConf(JobConf jobConf) {
-		return  jobConf.getClass("stratosphere.collector", HadoopDummyReporter.class, Reporter.class );
+		return  jobConf.getClass("stratosphere.collector", HadoopReporter.class, Reporter.class );
 	}
 }

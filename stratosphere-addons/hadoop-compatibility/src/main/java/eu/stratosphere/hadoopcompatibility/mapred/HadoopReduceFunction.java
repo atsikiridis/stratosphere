@@ -20,7 +20,7 @@ import eu.stratosphere.api.java.typeutils.ResultTypeQueryable;
 import eu.stratosphere.api.java.typeutils.TupleTypeInfo;
 import eu.stratosphere.api.java.typeutils.WritableTypeInfo;
 import eu.stratosphere.hadoopcompatibility.mapred.utils.HadoopConfiguration;
-import eu.stratosphere.hadoopcompatibility.mapred.wrapper.HadoopDummyReporter;
+import eu.stratosphere.hadoopcompatibility.mapred.wrapper.HadoopReporter;
 import eu.stratosphere.hadoopcompatibility.mapred.wrapper.HadoopOutputCollector;
 import eu.stratosphere.types.TypeInformation;
 import eu.stratosphere.util.Collector;
@@ -60,7 +60,7 @@ public class HadoopReduceFunction<KEYIN extends WritableComparable, VALUEIN exte
 								Class<KEYOUT> keyoutClass,
 								Class<VALUEOUT> valueoutClass) {
 		this(reducer, keyoutClass, valueoutClass, new HadoopOutputCollector<KEYOUT,VALUEOUT>(),
-				new HadoopDummyReporter());
+				new HadoopReporter());
 	}
 
 	public HadoopReduceFunction(Reducer<KEYIN,VALUEIN,KEYOUT,VALUEOUT> reducer,

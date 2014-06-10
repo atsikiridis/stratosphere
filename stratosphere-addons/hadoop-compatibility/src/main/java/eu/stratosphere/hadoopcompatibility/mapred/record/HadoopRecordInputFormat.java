@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 
+import eu.stratosphere.hadoopcompatibility.mapred.wrapper.HadoopReporter;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.RecordReader;
 import org.apache.hadoop.util.ReflectionUtils;
@@ -26,7 +27,6 @@ import eu.stratosphere.api.common.io.statistics.BaseStatistics;
 import eu.stratosphere.configuration.Configuration;
 import eu.stratosphere.hadoopcompatibility.mapred.record.datatypes.HadoopTypeConverter;
 import eu.stratosphere.hadoopcompatibility.mapred.utils.HadoopConfiguration;
-import eu.stratosphere.hadoopcompatibility.mapred.wrapper.HadoopDummyReporter;
 import eu.stratosphere.hadoopcompatibility.mapred.wrapper.HadoopInputSplit;
 import eu.stratosphere.types.Record;
 
@@ -85,7 +85,7 @@ public class HadoopRecordInputFormat<K, V> implements InputFormat<Record, Hadoop
 
 	@Override
 	public void open(HadoopInputSplit split) throws IOException {
-		this.recordReader = this.hadoopInputFormat.getRecordReader(split.getHadoopInputSplit(), jobConf, new HadoopDummyReporter());
+		this.recordReader = this.hadoopInputFormat.getRecordReader(split.getHadoopInputSplit(), jobConf, new HadoopReporter());
 		key = this.recordReader.createKey();
 		value = this.recordReader.createValue();
 		this.fetched = false;

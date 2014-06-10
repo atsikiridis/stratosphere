@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 
+import eu.stratosphere.hadoopcompatibility.mapred.wrapper.HadoopReporter;
 import eu.stratosphere.types.TypeInformation;
 import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.io.WritableComparable;
@@ -32,7 +33,6 @@ import eu.stratosphere.api.java.typeutils.TupleTypeInfo;
 import eu.stratosphere.api.java.typeutils.WritableTypeInfo;
 import eu.stratosphere.configuration.Configuration;
 import eu.stratosphere.hadoopcompatibility.mapred.utils.HadoopConfiguration;
-import eu.stratosphere.hadoopcompatibility.mapred.wrapper.HadoopDummyReporter;
 import eu.stratosphere.hadoopcompatibility.mapred.wrapper.HadoopInputSplit;
 
 public class HadoopInputFormat<K extends WritableComparable,V extends Writable> implements InputFormat<Tuple2<K,V>, HadoopInputSplit>, ResultTypeQueryable<Tuple2<K,V>> {
@@ -92,7 +92,7 @@ public class HadoopInputFormat<K extends WritableComparable,V extends Writable> 
 	
 	@Override
 	public void open(HadoopInputSplit split) throws IOException {
-		this.recordReader = this.hadoopInputFormat.getRecordReader(split.getHadoopInputSplit(), jobConf, new HadoopDummyReporter());
+		this.recordReader = this.hadoopInputFormat.getRecordReader(split.getHadoopInputSplit(), jobConf, new HadoopReporter());
 		key = this.recordReader.createKey();
 		value = this.recordReader.createValue();
 		this.fetched = false;

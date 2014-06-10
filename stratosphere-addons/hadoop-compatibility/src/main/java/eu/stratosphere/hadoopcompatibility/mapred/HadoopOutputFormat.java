@@ -17,6 +17,8 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 
+import eu.stratosphere.hadoopcompatibility.mapred.wrapper.HadoopProgressable;
+import eu.stratosphere.hadoopcompatibility.mapred.wrapper.HadoopReporter;
 import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.io.WritableComparable;
 import org.apache.hadoop.mapred.JobConf;
@@ -28,8 +30,6 @@ import eu.stratosphere.api.common.io.OutputFormat;
 import eu.stratosphere.api.java.tuple.Tuple2;
 import eu.stratosphere.configuration.Configuration;
 import eu.stratosphere.hadoopcompatibility.mapred.utils.HadoopConfiguration;
-import eu.stratosphere.hadoopcompatibility.mapred.wrapper.HadoopDummyProgressable;
-import eu.stratosphere.hadoopcompatibility.mapred.wrapper.HadoopDummyReporter;
 import eu.stratosphere.hadoopcompatibility.mapred.wrapper.HadoopFileOutputCommitter;
 
 
@@ -76,7 +76,7 @@ public class HadoopOutputFormat<K extends WritableComparable,V extends Writable>
 		} else {
 			throw new IOException("Task id too large.");
 		}
-		this.recordWriter = this.hadoopOutputFormat.getRecordWriter(null, this.jobConf, Integer.toString(taskNumber + 1), new HadoopDummyProgressable());
+		this.recordWriter = this.hadoopOutputFormat.getRecordWriter(null, this.jobConf, Integer.toString(taskNumber + 1), new HadoopProgressable());
 	}
 
 
@@ -91,7 +91,7 @@ public class HadoopOutputFormat<K extends WritableComparable,V extends Writable>
 	 */
 	@Override
 	public void close() throws IOException {
-		this.recordWriter.close(new HadoopDummyReporter());
+		this.recordWriter.close(new HadoopReporter());
 		if (this.fileOutputCommitterWrapper.needsTaskCommit(this.jobConf, TaskAttemptID.forName(this.jobConf.get("mapred.task.id")))) {
 			this.fileOutputCommitterWrapper.commitTask(this.jobConf, TaskAttemptID.forName(this.jobConf.get("mapred.task.id")));
 		}
