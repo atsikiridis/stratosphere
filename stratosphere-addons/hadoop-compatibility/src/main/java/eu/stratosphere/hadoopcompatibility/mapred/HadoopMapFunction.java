@@ -53,13 +53,11 @@ public class HadoopMapFunction<KEYIN extends WritableComparable, VALUEIN extends
 	private Mapper<KEYIN,VALUEIN,KEYOUT,VALUEOUT> mapper;
 	private HadoopOutputCollector<KEYOUT,VALUEOUT> outputCollector;
 	private HadoopReporter reporter;
-	private InputSplit[] inputSplits;
 
 	public HadoopMapFunction(Mapper<KEYIN,VALUEIN,KEYOUT,VALUEOUT> mapper,
 							Class<KEYOUT> keyoutClass,
-							Class<VALUEOUT> valueoutClass,
-							InputSplit[] inputSplits) {
-		this(mapper, keyoutClass, valueoutClass, inputSplits, new HadoopOutputCollector<KEYOUT,VALUEOUT>(),
+							Class<VALUEOUT> valueoutClass) {
+		this(mapper, keyoutClass, valueoutClass, new HadoopOutputCollector<KEYOUT,VALUEOUT>(),
 				new HadoopReporter());
 	}
 
@@ -67,12 +65,10 @@ public class HadoopMapFunction<KEYIN extends WritableComparable, VALUEIN extends
 	public HadoopMapFunction(Mapper<KEYIN,VALUEIN,KEYOUT,VALUEOUT> mapper,
 							Class<KEYOUT> keyoutClass,
 							Class<VALUEOUT> valueoutClass,
-							InputSplit[] inputSplits,
 							HadoopOutputCollector<KEYOUT,VALUEOUT> outputCollector,
 							HadoopReporter reporter) {
 		this.jobConf = new JobConf();
 		this.mapper = mapper;
-		this.inputSplits = inputSplits;
 		this.outputCollector = outputCollector;
 		this.reporter = reporter;
 		this.keyoutClass = keyoutClass;
@@ -82,7 +78,6 @@ public class HadoopMapFunction<KEYIN extends WritableComparable, VALUEIN extends
 	@Override
 	public void flatMap(Tuple2<KEYIN,VALUEIN> value, Collector<Tuple2<KEYOUT,VALUEOUT>> out) throws Exception {
 		outputCollector.set(out);
-		reporter.setInputSplit(inputSplits[0]);  //TODO Have a counter.
 		mapper.map(value.f0, value.f1, outputCollector, reporter);
 	}
 

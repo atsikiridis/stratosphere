@@ -15,6 +15,7 @@ package eu.stratosphere.hadoopcompatibility.mapred.example;
 import eu.stratosphere.api.java.operators.ReduceGroupOperator;
 import eu.stratosphere.hadoopcompatibility.mapred.HadoopMapFunction;
 import eu.stratosphere.hadoopcompatibility.mapred.HadoopReduceFunction;
+import eu.stratosphere.hadoopcompatibility.mapred.HadoopKeySelector;
 import eu.stratosphere.util.InstantiationUtil;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.LongWritable;
@@ -31,6 +32,7 @@ import eu.stratosphere.api.java.ExecutionEnvironment;
 import eu.stratosphere.api.java.tuple.Tuple2;
 import eu.stratosphere.hadoopcompatibility.mapred.HadoopInputFormat;
 import eu.stratosphere.hadoopcompatibility.mapred.HadoopOutputFormat;
+import org.apache.hadoop.mapred.lib.HashPartitioner;
 import org.apache.hadoop.mapred.lib.LongSumReducer;
 import org.apache.hadoop.mapred.lib.TokenCountMapper;
 
@@ -77,7 +79,7 @@ public class FullWordCount {
 		final Reducer<Text,LongWritable, Text,LongWritable> reducer = InstantiationUtil.instantiate(LongSumReducer.class,
 				Reducer.class);
 		final ReduceGroupOperator<Tuple2<Text, LongWritable>,Tuple2<Text, LongWritable>> reduceOperator = words.
-				groupBy(0).
+				groupBy(new HadoopKeySelector<Text, LongWritable>(new HashPartitioner(), hadoopJobConf.getNumReduceTasks())).
 				reduceGroup(new HadoopReduceFunction<Text, LongWritable,Text, LongWritable>(reducer, Text.class,
 						LongWritable.class));
 

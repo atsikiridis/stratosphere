@@ -35,12 +35,12 @@ public class HadoopReporter extends HadoopProgressable implements Reporter {
 
 	@Override
 	public Counter getCounter(Enum<?> name) {
-		return getCounter()
+		return null ;//getCounter()
 	}
 
 	@Override
 	public Counter getCounter(String group, String name) {
-		new Counter()
+		return  null ;//new Counter()
 	}
 
 	@Override

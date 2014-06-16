@@ -29,6 +29,8 @@ public class HadoopDriverSameCombinerITCase extends JavaProgramTestBase {
 		resultPath = getTempDirPath("result");
 	}
 
+
+
 	@Override
 	protected void postSubmit() throws Exception {
 		compareResultsByLinesInMemory(WordCountData.COUNTS, resultPath + "/1");
