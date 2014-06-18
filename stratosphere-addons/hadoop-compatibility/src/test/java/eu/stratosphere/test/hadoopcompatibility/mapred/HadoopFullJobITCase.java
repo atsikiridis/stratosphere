@@ -15,12 +15,29 @@ package eu.stratosphere.test.hadoopcompatibility.mapred;
 import eu.stratosphere.hadoopcompatibility.mapred.example.FullWordCount;
 import eu.stratosphere.test.testdata.WordCountData;
 import eu.stratosphere.test.util.JavaProgramTestBase;
+import org.junit.Assert;
+
+import java.util.ArrayList;
+import java.util.Arrays;
 
 public class HadoopFullJobITCase extends JavaProgramTestBase {
 
 	protected String textPath;
 	protected String resultPath;
 
+	public void compareResultsByLinesInMemory(String expectedResultStr, String resultPath) throws Exception {
+		ArrayList<String> list = new ArrayList<String>();
+		readAllResultLines(list, resultPath, false);
+
+		String[] result = (String[]) list.toArray(new String[list.size()]);
+		//Arrays.sort(result);
+
+		String[] expected = expectedResultStr.isEmpty() ? new String[0] : expectedResultStr.split("\n");
+		Arrays.sort(expected);
+
+		Assert.assertEquals("Different number of lines in expected and obtained result.", expected.length, result.length);
+		Assert.assertArrayEquals(expected, result);
+	}
 
 	@Override
 	protected void preSubmit() throws Exception {

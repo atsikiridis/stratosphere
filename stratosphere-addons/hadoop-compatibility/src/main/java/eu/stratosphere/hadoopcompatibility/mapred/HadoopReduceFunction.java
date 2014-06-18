@@ -59,8 +59,7 @@ public class HadoopReduceFunction<KEYIN extends WritableComparable, VALUEIN exte
 	public HadoopReduceFunction(Reducer<KEYIN,VALUEIN,KEYOUT,VALUEOUT> reducer,
 								Class<KEYOUT> keyoutClass,
 								Class<VALUEOUT> valueoutClass) {
-		this(reducer, keyoutClass, valueoutClass, new HadoopOutputCollector<KEYOUT,VALUEOUT>(),
-				new HadoopReporter());
+		this(reducer, keyoutClass, valueoutClass, new HadoopOutputCollector<KEYOUT,VALUEOUT>(), new HadoopReporter());
 	}
 
 	public HadoopReduceFunction(Reducer<KEYIN,VALUEIN,KEYOUT,VALUEOUT> reducer,
@@ -78,8 +77,7 @@ public class HadoopReduceFunction<KEYIN extends WritableComparable, VALUEIN exte
 	}
 
 	/**
-	 * A wrapping iterator for an iterator of key-value tuples that can be used as an iterator of values. Moreover,
-	 * there is always a reference to the key corresponding to the value that is currently being traversed.
+	 * A wrapping iterator for an iterator of key-value tuples that can be used as an iterator of values.
 	 */
 	private final class ReducerTransformingIterator extends TupleUnwrappingIterator<VALUEIN,KEYIN>
 			implements java.io.Serializable {

@@ -6,6 +6,8 @@ import eu.stratosphere.api.java.tuple.Tuple2;
 import eu.stratosphere.hadoopcompatibility.mapred.utils.HadoopConfiguration;
 import eu.stratosphere.hadoopcompatibility.mapred.wrapper.HadoopReporter;
 import eu.stratosphere.util.InstantiationUtil;
+import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.Partitioner;
 import org.apache.hadoop.util.ReflectionUtils;
@@ -14,7 +16,7 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 
-public class HadoopKeySelector<K2,V2> extends KeySelector<Tuple2<K2,V2>, Integer> {
+public class HadoopKeySelector<K2 extends Writable,V2 extends Writable> extends KeySelector<Tuple2<K2,V2>, Integer>  {
 
 	private Partitioner partitioner;
 	private int noOfReduceTasks;
@@ -49,6 +51,9 @@ public class HadoopKeySelector<K2,V2> extends KeySelector<Tuple2<K2,V2>, Integer
 		ReflectionUtils.setConf(partitioner, jobConf);
 		this.noOfReduceTasks = (Integer) in.readObject();
 	}
+
+
+
 
 
 }

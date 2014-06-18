@@ -12,10 +12,14 @@
  **********************************************************************************************************************/
 package eu.stratosphere.hadoopcompatibility.mapred.example;
 
+import eu.stratosphere.api.common.operators.Order;
 import eu.stratosphere.api.java.operators.ReduceGroupOperator;
+import eu.stratosphere.api.java.operators.UnsortedGrouping;
+import eu.stratosphere.api.java.record.operators.ReduceOperator;
 import eu.stratosphere.hadoopcompatibility.mapred.HadoopMapFunction;
 import eu.stratosphere.hadoopcompatibility.mapred.HadoopReduceFunction;
 import eu.stratosphere.hadoopcompatibility.mapred.HadoopKeySelector;
+import eu.stratosphere.hadoopcompatibility.mapred.HadoopReduceGrouping;
 import eu.stratosphere.util.InstantiationUtil;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.LongWritable;
@@ -78,13 +82,20 @@ public class FullWordCount {
 
 		final Reducer<Text,LongWritable, Text,LongWritable> reducer = InstantiationUtil.instantiate(LongSumReducer.class,
 				Reducer.class);
-		final ReduceGroupOperator<Tuple2<Text, LongWritable>,Tuple2<Text, LongWritable>> reduceOperator = words.
-				groupBy(new HadoopKeySelector<Text, LongWritable>(new HashPartitioner(), hadoopJobConf.getNumReduceTasks())).
-				reduceGroup(new HadoopReduceFunction<Text, LongWritable,Text, LongWritable>(reducer, Text.class,
-						LongWritable.class));
+		final UnsortedGrouping<Tuple2<Text, LongWritable>> grouping = words.
+				groupBy(new HadoopKeySelector<Text, LongWritable>(new HashPartitioner(), hadoopJobConf.getNumReduceTasks()));
 
-		//The reducer will be called
-		reduceOperator.setCombinable(true);
+
+		ReduceGroupOperator<Tuple2<Tuple2<Text,LongWritable>, Tuple2<Text,LongWritable>>, Tuple2<Text, LongWritable>> set = grouping.sortGroup(0, Order.ASCENDING).
+				reduceGroup(new HadoopReduceGrouping(hadoopJobConf.getOutputValueGroupingComparator(),new HadoopReduceFunction<Text, LongWritable, Text, LongWritable>(reducer, Text.class,
+						LongWritable.class), Text.class, LongWritable.class));
+		//.
+			//	ReduceGroupOperator<Tuple2<Text, LongWritable>, Tuple2<Text, LongWritable>> reduceOperator =set.groupBy(0).reduceGroup(new HadoopReduceFunction<Text, LongWritable, Text, LongWritable>(reducer, Text.class,
+			//			LongWritable.class));
+
+
+				//The reducer will be called
+				//reduceOperator.setCombinable(true);
 
 		//And the OutputFormat
 		final TextOutputFormat<Text, LongWritable> outputFormat = new TextOutputFormat<Text, LongWritable>();
@@ -94,7 +105,7 @@ public class FullWordCount {
 		TextOutputFormat.setOutputPath(hadoopOutputFormat.getJobConf(), new Path(outputPath));
 
 		// Output & Execute
-		reduceOperator.output(hadoopOutputFormat);
+		set.output(hadoopOutputFormat);
 		env.execute("FullWordCount");
 	}
 

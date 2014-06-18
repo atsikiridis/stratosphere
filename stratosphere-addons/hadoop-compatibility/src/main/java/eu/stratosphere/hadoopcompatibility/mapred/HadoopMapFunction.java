@@ -57,8 +57,7 @@ public class HadoopMapFunction<KEYIN extends WritableComparable, VALUEIN extends
 	public HadoopMapFunction(Mapper<KEYIN,VALUEIN,KEYOUT,VALUEOUT> mapper,
 							Class<KEYOUT> keyoutClass,
 							Class<VALUEOUT> valueoutClass) {
-		this(mapper, keyoutClass, valueoutClass, new HadoopOutputCollector<KEYOUT,VALUEOUT>(),
-				new HadoopReporter());
+		this(mapper, keyoutClass, valueoutClass, new HadoopOutputCollector<KEYOUT,VALUEOUT>(), new HadoopReporter());
 	}
 
 	@SuppressWarnings("unchecked")
